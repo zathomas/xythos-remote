@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app version="2.4" 
+	xmlns="http://java.sun.com/xml/ns/j2ee" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xsi:schemaLocation="http://java.sun.com/xml/ns/j2ee 
+	http://java.sun.com/xml/ns/j2ee/web-app_2_4.xsd">
+	<servlet>
+	  <servlet-name>remoting</servlet-name>
+	  <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+	  <load-on-startup>1</load-on-startup>
+	</servlet>
+  <servlet>
+    <description>HTTP endpoint for making requests onto Xythos</description>
+    <display-name>Xythos Endpoint Servlet</display-name>
+    <servlet-name>XythosEndpointServlet</servlet-name>
+    <servlet-class>org.sakaiproject.xythos.XythosEndpointServlet</servlet-class>
+  </servlet>
+
+
+	<servlet-mapping>
+	  <servlet-name>remoting</servlet-name>
+	  <url-pattern>/remoting/*</url-pattern>
+	</servlet-mapping>
+  <servlet-mapping>
+    <servlet-name>XythosEndpointServlet</servlet-name>
+    <url-pattern>/servlet/XythosEndpointServlet</url-pattern>
+  </servlet-mapping>
+	
+  <welcome-file-list>
+    <welcome-file>index.jsp</welcome-file>
+  </welcome-file-list>
+</web-app>

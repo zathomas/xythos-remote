@@ -1,0 +1,4 @@
+Xythos Remote Webapp
+====================
+
+This is a webapp that runs inside Tomcat alongside Xythos 7 and exposes an API using Caucho Hessian and Spring for convenience of wiring and testing it.
