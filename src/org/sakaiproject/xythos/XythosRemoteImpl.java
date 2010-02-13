@@ -1,6 +1,10 @@
 package org.sakaiproject.xythos;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -12,6 +16,7 @@ import java.util.Properties;
 
 import javax.jcr.AccessDeniedException;
 import javax.jcr.InvalidItemStateException;
+import javax.jcr.Item;
 import javax.jcr.ItemExistsException;
 import javax.jcr.LoginException;
 import javax.jcr.Node;
@@ -39,179 +44,181 @@ import com.xythos.storageServer.admin.api.AdminUtil;
 import com.xythos.storageServer.api.*;
 import com.xythos.storageServer.permissions.api.AccessControlEntry;
 
+import edu.nyu.XythosDocument;
 import edu.nyu.XythosRemote;
 
 public class XythosRemoteImpl implements XythosRemote {
-	
-	private static String ADMIN = "administrator";
+  
+  private static String ADMIN = "administrator";
 
-	public boolean ping() {
-		return true;
-	}
+  public boolean ping() {
+    return true;
+  }
 
-	public void createDirectory (String l_username, String l_vsName, 
-			String l_homedirectory, String l_name) {                                        
-		try {
-			Context l_context = null;
-			try {      
-				VirtualServer l_virtualserver = VirtualServer.find(l_vsName);
-				l_context = getUserContext(l_username, l_vsName);    
-				String l_ownerPrincipalID = l_context.getContextUser().getPrincipalID();
+  public void createDirectory (String l_username, String l_vsName, 
+      String l_homedirectory, String l_name) {                                        
+    try {
+      Context l_context = null;
+      try {      
+        VirtualServer l_virtualserver = VirtualServer.find(l_vsName);
+        l_context = getUserContext(l_username, l_vsName);
+        FileSystem.getEntry(arg0, arg1, arg2, arg3)
+        String l_ownerPrincipalID = l_context.getContextUser().getPrincipalID();
 
-				CreateDirectoryData l_data = new CreateDirectoryData(l_virtualserver,
-						l_homedirectory,
-						l_name,
-						l_ownerPrincipalID);
+        CreateDirectoryData l_data = new CreateDirectoryData(l_virtualserver,
+            l_homedirectory,
+            l_name,
+            l_ownerPrincipalID);
 
-				FileSystem.createDirectory(l_data, l_context);
+        FileSystem.createDirectory(l_data, l_context);
 
-				l_context.commitContext();
-				l_context = null;
+        l_context.commitContext();
+        l_context = null;
 
 
 
-			} finally {
-				if (l_context != null) {
-					l_context.rollbackContext();
-					l_context = null; 
-				}  
-			}
-		} catch (Exception l_e) {
-			try {
-			} catch (Exception l_e2) {
-				l_e2.printStackTrace();        
-			}
-		}
-	}
-	private static Context getUserContext(String p_username, String p_virtualserver) 
-	throws XythosException {
-		UserBase l_user = null;  
-		Context l_context = null;  
-		if (p_username == null)
-			throw new WFSSecurityException("The user field was empty!");
-		if (p_username.equalsIgnoreCase(ADMIN)) {
-			return(AdminUtil.getContextForAdmin("1.1.1.1"));
-		}
+      } finally {
+        if (l_context != null) {
+          l_context.rollbackContext();
+          l_context = null; 
+        }  
+      }
+    } catch (Exception l_e) {
+      try {
+      } catch (Exception l_e2) {
+        l_e2.printStackTrace();        
+      }
+    }
+  }
+  private static Context getUserContext(String p_username, String p_virtualserver) 
+  throws XythosException {
+    UserBase l_user = null;  
+    Context l_context = null;  
+    if (p_username == null)
+      throw new WFSSecurityException("The user field was empty!");
+    if (p_username.equalsIgnoreCase(ADMIN)) {
+      return(AdminUtil.getContextForAdmin("1.1.1.1"));
+    }
 
-		l_user = PrincipalManager.findUser(p_username, p_virtualserver);
-		if (l_user == null) 
-			throw new WFSSecurityException("No user found!");
+    l_user = PrincipalManager.findUser(p_username, p_virtualserver);
+    if (l_user == null) 
+      throw new WFSSecurityException("No user found!");
 
-		Properties l_prop = new Properties();
-		l_prop.put("Xythos.Logger.IPAddress", "192.168.0.27");
+    Properties l_prop = new Properties();
+    l_prop.put("Xythos.Logger.IPAddress", "192.168.0.27");
 
-		l_context = ContextFactory.create(l_user,
-				l_prop);
+    l_context = ContextFactory.create(l_user,
+        l_prop);
 
-		return l_context;  
-	}
-	
-	  public String findAllFilesForUser(String l_username) {
-		  List<String> permittedFiles = new ArrayList<String>();
-			  try {
-				Context l_context = null;
-				  l_context = AdminUtil.getContextForAdmin("1.1.1.1");
-				  VirtualServer vServer = VirtualServer.getDefaultVirtualServer();
-				  UserBase l_principal = PrincipalManager.findUser(l_username, vServer.getName());
-				  String[] topLevelDirectories = FileSystem.findTopLevelDirectoryEntries(vServer, l_context);
-				  for (String dirName : topLevelDirectories) {
-					  FileSystemTopLevelDirectory topDir = FileSystem.findTopLevelDirectoryEntry(vServer, dirName, l_context);
-					  FileSystemDirectory dir = topDir.getFileSystemDirectory(false, l_context);
-					  permittedFiles.addAll(permittedFilesForEntry(l_principal.getPrincipalID(), dir));  
-				  }
-				  StringBuffer fileList = new StringBuffer();
-				  for (String filename : permittedFiles) {
-					  fileList.append(filename + ", ");
-				  }
-				  return fileList.toString();
-			} catch (XythosException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				return "error";
-			}		  
-	  }
-	  
-	  public Collection<Map<String,String>> findFilesWithXPath(String searchQuery, String userId) {
-		  Collection<Map<String,String>> rv = new ArrayList<Map<String,String>>();
-		  try {
-			Repository repository = RepositoryFactory.newRepository(null);
-			  Session session = repository.login(new NoPasswordCredentials(userId));
-			  session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
-			  session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
-			  QueryManager queryManager = session.getWorkspace().getQueryManager();
-			  Query query = queryManager.createQuery(searchQuery, Query.XPATH);
-			  Map<String, String> rowMap = null;
-			  QueryResult result = query.execute();
-			  for (Iterator<?> i = result.getNodes();i.hasNext(); ) {
-				  rowMap = new HashMap<String,String>();
-				  Node node = (Node)i.next();
-				  for (Iterator<?> j = node.getProperties();j.hasNext(); ) {
-					  javax.jcr.Property prop = (javax.jcr.Property)j.next();
-					  if (!prop.getDefinition().isMultiple()) {
-						  rowMap.put(prop.getName(), prop.getValue().getString());
-					  }
-				  }
-				  rowMap.put("jcr:path", node.getPath());
-				  rv.add(rowMap);
-			  }
-			  return rv;
-		} catch (LoginException e) {
-			e.printStackTrace();
-			return null;
-		} catch (InvalidQueryException e) {
-			e.printStackTrace();
-			return null;
-		} catch (RepositoryException e) {
-			e.printStackTrace();
-			return null;
-		}
-	  }
-	  
-	  private List<String> permittedFilesForEntry(String l_username,
-			  FileSystemEntry entry) {
-		  List<String> rv = new ArrayList<String>();
-		  try {
-			  if (userCanRead(l_username, entry)) {
-				  rv.add(entry.getName());
-			  }
-			  if (entry instanceof FileSystemDirectory) {
-				  FileSystemEntry[] contents = ((FileSystemDirectory)entry).getFindableEntries();
-				  for (FileSystemEntry child : contents) {
-					  rv.addAll(permittedFilesForEntry(l_username, child));
-				  }
-			  }
-		  } catch (XythosException e) {
-			  // TODO Auto-generated catch block
-			  e.printStackTrace();
-		  }
-		  return rv;
+    return l_context;  
+  }
+  
+    public String findAllFilesForUser(String l_username) {
+      List<String> permittedFiles = new ArrayList<String>();
+        try {
+        Context l_context = null;
+          l_context = AdminUtil.getContextForAdmin("1.1.1.1");
+          VirtualServer vServer = VirtualServer.getDefaultVirtualServer();
+          UserBase l_principal = PrincipalManager.findUser(l_username, vServer.getName());
+          String[] topLevelDirectories = FileSystem.findTopLevelDirectoryEntries(vServer, l_context);
+          for (String dirName : topLevelDirectories) {
+            FileSystemTopLevelDirectory topDir = FileSystem.findTopLevelDirectoryEntry(vServer, dirName, l_context);
+            FileSystemDirectory dir = topDir.getFileSystemDirectory(false, l_context);
+            permittedFiles.addAll(permittedFilesForEntry(l_principal.getPrincipalID(), dir));  
+          }
+          StringBuffer fileList = new StringBuffer();
+          for (String filename : permittedFiles) {
+            fileList.append(filename + ", ");
+          }
+          return fileList.toString();
+      } catch (XythosException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+        return "error";
+      }     
+    }
+    
+    public Collection<Map<String,String>> findFilesWithXPath(String searchQuery, String userId) {
+      Collection<Map<String,String>> rv = new ArrayList<Map<String,String>>();
+      try {
+      Repository repository = RepositoryFactory.newRepository(null);
+        Session session = repository.login(new NoPasswordCredentials(userId));
+        session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
+        session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
+        QueryManager queryManager = session.getWorkspace().getQueryManager();
+        Query query = queryManager.createQuery(searchQuery, Query.XPATH);
+        Map<String, String> rowMap = null;
+        QueryResult result = query.execute();
+        for (Iterator<?> i = result.getNodes();i.hasNext(); ) {
+          rowMap = new HashMap<String,String>();
+          Node node = (Node)i.next();
+          for (Iterator<?> j = node.getProperties();j.hasNext(); ) {
+            javax.jcr.Property prop = (javax.jcr.Property)j.next();
+            if (!prop.getDefinition().isMultiple()) {
+              rowMap.put(prop.getName(), prop.getValue().getString());
+            }
+          }
+          rowMap.put("jcr:path", node.getPath());
+          rv.add(rowMap);
+        }
+        return rv;
+    } catch (LoginException e) {
+      e.printStackTrace();
+      return null;
+    } catch (InvalidQueryException e) {
+      e.printStackTrace();
+      return null;
+    } catch (RepositoryException e) {
+      e.printStackTrace();
+      return null;
+    }
+    }
+    
+    private List<String> permittedFilesForEntry(String l_username,
+        FileSystemEntry entry) {
+      List<String> rv = new ArrayList<String>();
+      try {
+        if (userCanRead(l_username, entry)) {
+          rv.add(entry.getName());
+        }
+        if (entry instanceof FileSystemDirectory) {
+          FileSystemEntry[] contents = ((FileSystemDirectory)entry).getFindableEntries();
+          for (FileSystemEntry child : contents) {
+            rv.addAll(permittedFilesForEntry(l_username, child));
+          }
+        }
+      } catch (XythosException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      }
+      return rv;
 
-	  }
+    }
 
-	  private boolean userCanRead(String userPrincipalId, FileSystemEntry entry) {
-		  try {
-			  if (entry.getEntryOwnerPrincipalID().equalsIgnoreCase(userPrincipalId)) return true;
-			  List<String> searchPrincipals = new ArrayList<String>();
-			  searchPrincipals.add(userPrincipalId);
-			  GroupArray globalGroups = PrincipalManager.searchForGroups("*", "*", "*", PrincipalManager.PRINCIPAL_SEARCH_UNLIMITED_RESULTS, null);
-			  for (Group g : globalGroups.getGroups()) {
-				  if (g.getMembers() != null) {
-					  for (Principal p : g.getMembers()) {
-						  if (p.getPrincipalID().equalsIgnoreCase(userPrincipalId)) searchPrincipals.add(g.getPrincipalID());
-					  }
-				  }
-			  }
-			  for (String principalId : searchPrincipals) {
-				  AccessControlEntry ace = entry.getAccessControlEntry(principalId);
-				  if (ace.isReadable()) return true;
-			  }
-			  return false;
-		  } catch (XythosException e) {
-			  // TODO Auto-generated catch block
-			  e.printStackTrace();
-			  return false;
-		  }
-	  }
+    private boolean userCanRead(String userPrincipalId, FileSystemEntry entry) {
+      try {
+        if (entry.getEntryOwnerPrincipalID().equalsIgnoreCase(userPrincipalId)) return true;
+        List<String> searchPrincipals = new ArrayList<String>();
+        searchPrincipals.add(userPrincipalId);
+        GroupArray globalGroups = PrincipalManager.searchForGroups("*", "*", "*", PrincipalManager.PRINCIPAL_SEARCH_UNLIMITED_RESULTS, null);
+        for (Group g : globalGroups.getGroups()) {
+          if (g.getMembers() != null) {
+            for (Principal p : g.getMembers()) {
+              if (p.getPrincipalID().equalsIgnoreCase(userPrincipalId)) searchPrincipals.add(g.getPrincipalID());
+            }
+          }
+        }
+        for (String principalId : searchPrincipals) {
+          AccessControlEntry ace = entry.getAccessControlEntry(principalId);
+          if (ace.isReadable()) return true;
+        }
+        return false;
+      } catch (XythosException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+        return false;
+      }
+    }
 
     public String saveFile(String path, String id, byte[] contentBytes, String fileName,
         String contentType, String userId) {
@@ -323,11 +330,55 @@ public class XythosRemoteImpl implements XythosRemote {
       return null;
     }
 
-	public Map<String, String> getProperties() {
-		Map<String, String> rv = new HashMap<String, String>();
-		rv.put("name", "Zachary");
-		rv.put("rank", "lt. colonel");
-		rv.put("serial", "464917732");
-		return rv;
-	}
+  public Map<String, String> getProperties() {
+    Map<String, String> rv = new HashMap<String, String>();
+    rv.put("name", "Zachary");
+    rv.put("rank", "lt. colonel");
+    rv.put("serial", "464917732");
+    return rv;
+  }
+
+  public XythosDocument getDocument(String path, String userId) {
+    try {
+      final String finalPath = path;
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      FileSystemFile file = (FileSystemFile)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      PipedOutputStream output = new PipedOutputStream();
+      file.getFileContent(output);
+      final PipedInputStream data = new PipedInputStream(output);
+      final String contentType = file.getFileContentType();
+      final long contentLength = file.getEntrySize();
+//      Repository repository = RepositoryFactory.newRepository(null);
+//      Session session = repository.login(new NoPasswordCredentials(userId));
+//      Node document = (Node)session.getItem(path);
+//      final InputStream data = document.getProperty(JcrConstants.JCR_DATA).getStream();
+//      final String mimeType = document.getProperty(JcrConstants.JCR_MIMETYPE).getString();
+//      final long contentLength = new Long(data.available());
+      return new XythosDocument() {
+
+        public long getContentLength() {
+          return contentLength;
+        }
+
+        public String getContentType() {
+          return contentType;
+        }
+
+        public InputStream getDocumentInputStream() {
+          return data;
+        }
+
+        public Map<String, Object> getProperties() {
+          return new HashMap<String, Object>();
+        }
+
+        public String getUri() {
+          return "http://localhost:9090" + finalPath;
+        }
+
+      };
+    } catch (Exception e) {
+      return null;
+    }
+  }
 }
