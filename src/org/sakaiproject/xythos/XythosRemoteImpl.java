@@ -3,6 +3,7 @@ package org.sakaiproject.xythos;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.util.ArrayList;
@@ -36,6 +37,7 @@ import javax.jcr.version.VersionException;
 
 
 import com.xythos.common.api.*;
+import com.xythos.fileSystem.File;
 import com.xythos.jcr.api.AdminCredentials;
 import com.xythos.jcr.api.NoPasswordCredentials;
 import com.xythos.jcr.api.RepositoryFactory;
@@ -341,10 +343,10 @@ public class XythosRemoteImpl implements XythosRemote {
     try {
       final String finalPath = path;
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      FileSystemFile file = (FileSystemFile)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
-      PipedOutputStream output = new PipedOutputStream();
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
       file.getFileContent(output);
-      final PipedInputStream data = new PipedInputStream(output);
+      final byte[] data = output.toByteArray();
       final String contentType = file.getFileContentType();
       final long contentLength = file.getEntrySize();
 //      Repository repository = RepositoryFactory.newRepository(null);
@@ -363,7 +365,7 @@ public class XythosRemoteImpl implements XythosRemote {
           return contentType;
         }
 
-        public InputStream getDocumentInputStream() {
+        public byte[] getDocumentContent() {
           return data;
         }
 
@@ -377,6 +379,89 @@ public class XythosRemoteImpl implements XythosRemote {
 
       };
     } catch (Exception e) {
+      return null;
+    }
+  }
+
+  public long getContentLength(String path, String userId) {
+    try {
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      return file.getEntrySize();
+    } catch (Exception e) {
+      return 0;
+    }
+  }
+
+  public String getContentType(String path, String userId) {
+    try {
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      return file.getFileContentType();
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  public String getContentUri(String path, String userId) {
+    try {
+      return "http://localhost:9090" + path;
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  public byte[] getFileContent(String path, String userId) {
+    try {
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      file.getFileContent(output);
+      return output.toByteArray();
+    } catch (Exception e) {
+      return new byte[]{};
+    }
+  }
+
+  public Map<String, Object> getFileProperties(String path, String userId) {
+    Map<String, Object> rv = new HashMap<String, Object>();
+    try {
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      com.xythos.storageServer.properties.api.Property[] props = file.getProperties(false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      for(com.xythos.storageServer.properties.api.Property prop : props) {
+        rv.put(prop.getName(), prop.getValue());
+      }
+      return rv;
+    } catch (Exception e) {
+      return rv;
+    }
+  }
+
+  public List<String> doSearch(Map<String, Object> searchProperties, String userId) {
+    List<String> rv = new ArrayList<String>();
+    try {
+      String queryString = (String) searchProperties.get("q");
+      Repository repository = RepositoryFactory.newRepository(null);
+      Session session = repository.login(new NoPasswordCredentials(userId));
+      session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
+      session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
+      QueryManager queryManager = session.getWorkspace().getQueryManager();
+      Query query = queryManager.createQuery("//*[(@jcr:primaryType='nt:file' and (jcr:contains(., '" + queryString + "'))]", Query.XPATH);
+      QueryResult result = query.execute();
+      for (Iterator<?> i = result.getNodes();i.hasNext(); ) {
+        Node node = (Node)i.next();
+        rv.add(node.getPath());
+      }
+      return rv;
+    } catch (LoginException e) {
+      e.printStackTrace();
+      return null;
+    } catch (InvalidQueryException e) {
+      e.printStackTrace();
+      return null;
+    } catch (RepositoryException e) {
+      e.printStackTrace();
       return null;
     }
   }
