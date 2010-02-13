@@ -62,7 +62,6 @@ public class XythosRemoteImpl implements XythosRemote {
       try {      
         VirtualServer l_virtualserver = VirtualServer.find(l_vsName);
         l_context = getUserContext(l_username, l_vsName);
-        FileSystem.getEntry(arg0, arg1, arg2, arg3)
         String l_ownerPrincipalID = l_context.getContextUser().getPrincipalID();
 
         CreateDirectoryData l_data = new CreateDirectoryData(l_virtualserver,
