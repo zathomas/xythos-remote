@@ -405,7 +405,7 @@ public class XythosRemoteImpl implements XythosRemote {
 
   public String getContentUri(String path, String userId) {
     try {
-      return "http://localhost:9090" + path;
+      return path;
     } catch (Exception e) {
       return null;
     }
@@ -427,7 +427,8 @@ public class XythosRemoteImpl implements XythosRemote {
     Map<String, Object> rv = new HashMap<String, Object>();
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      FileSystemFile file = (FileSystemFile)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      rv.put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
       com.xythos.storageServer.properties.api.Property[] props = file.getProperties(false, AdminUtil.getContextForAdmin("1.1.1.1"));
       for(com.xythos.storageServer.properties.api.Property prop : props) {
         rv.put(prop.getName(), prop.getValue());
@@ -447,7 +448,7 @@ public class XythosRemoteImpl implements XythosRemote {
       session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
       session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
       QueryManager queryManager = session.getWorkspace().getQueryManager();
-      Query query = queryManager.createQuery("//*[(@jcr:primaryType='nt:file' and (jcr:contains(., '" + queryString + "'))]", Query.XPATH);
+      Query query = queryManager.createQuery("//*[(@jcr:primaryType='nt:file')]", Query.XPATH);
       QueryResult result = query.execute();
       for (Iterator<?> i = result.getNodes();i.hasNext(); ) {
         Node node = (Node)i.next();
@@ -464,5 +465,51 @@ public class XythosRemoteImpl implements XythosRemote {
       e.printStackTrace();
       return null;
     }
+  }
+
+  public void updateFile(String path, byte[] fileData,
+      Map<String, Object> properties, String userId) {
+    Session session = null;
+    try {
+      Repository repository = RepositoryFactory.newRepository(null);
+        session = repository.login(new NoPasswordCredentials(userId));
+        if (session.itemExists(path)) {
+          Node fileNode = (Node) session.getItem(path);
+          fileNode.setProperty("jcr:data", new ByteArrayInputStream(fileData));
+          fileNode.save();
+        } else {
+          // get the parent node
+          Node parent = (Node)session.getItem(path.substring(0, path.lastIndexOf("/")));
+          // add file node
+          Node file = parent.addNode(path.substring(path.lastIndexOf("/") + 1), "nt:file"); 
+          // add jcr:content child node
+          Node content = file.addNode("jcr:content", "nt:resource"); 
+          content.setProperty("jcr:data", new ByteArrayInputStream(fileData));
+          if (properties.containsKey("contentType")) {
+            content.setProperty("jcr:mimeType", (String)properties.get("contentType"));
+          }
+          parent.save();
+        }
+    } catch (ValueFormatException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    } catch (VersionException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    } catch (LockException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    } catch (ConstraintViolationException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    } catch (RepositoryException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    } finally {
+      if (session != null){
+        session.logout();
+      }
+    }
+    
   }
 }
