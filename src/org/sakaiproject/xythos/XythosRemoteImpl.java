@@ -56,6 +56,13 @@ public class XythosRemoteImpl implements XythosRemote {
   public boolean ping() {
     return true;
   }
+  
+  private void addBookmark(String userId, String path, String displayName) throws XythosException {
+    VirtualServer defaultServer = VirtualServer.getDefaultVirtualServer();
+    Context context = AdminUtil.getContextForAdmin("1.1.1.1");
+    UserBase user = PrincipalManager.findUser(userId, defaultServer.getName());
+    BookmarkManager.addBookmark(user, defaultServer, path, displayName, context);
+  }
 
   public void createDirectory (String l_username, String l_vsName, 
       String l_homedirectory, String l_name) {                                        
@@ -448,7 +455,7 @@ public class XythosRemoteImpl implements XythosRemote {
       session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
       session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
       QueryManager queryManager = session.getWorkspace().getQueryManager();
-      Query query = queryManager.createQuery("//*[(@jcr:primaryType='nt:file')]", Query.XPATH);
+      Query query = queryManager.createQuery("//"+userId+"//*[(@jcr:primaryType='nt:file')]", Query.XPATH);
       QueryResult result = query.execute();
       for (Iterator<?> i = result.getNodes();i.hasNext(); ) {
         Node node = (Node)i.next();
