@@ -45,6 +45,8 @@ import com.xythos.security.api.*;
 import com.xythos.storageServer.admin.api.AdminUtil;
 import com.xythos.storageServer.api.*;
 import com.xythos.storageServer.permissions.api.AccessControlEntry;
+import com.xythos.webdav.dasl.api.DaslResultSet;
+import com.xythos.webdav.dasl.api.DaslStatement;
 
 import edu.nyu.XythosDocument;
 import edu.nyu.XythosRemote;
@@ -443,28 +445,53 @@ public class XythosRemoteImpl implements XythosRemote {
     List<String> rv = new ArrayList<String>();
     try {
       String queryString = (String) searchProperties.get("q");
-      Repository repository = RepositoryFactory.newRepository(null);
-      Session session = repository.login(new NoPasswordCredentials(userId));
-      session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
-      session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
-      QueryManager queryManager = session.getWorkspace().getQueryManager();
-      Query query = queryManager.createQuery("//*[(@jcr:primaryType='nt:file')]", Query.XPATH);
-      QueryResult result = query.execute();
-      for (Iterator<?> i = result.getNodes();i.hasNext(); ) {
-        Node node = (Node)i.next();
-        rv.add(node.getPath());
+      if (queryString == null | "*".equals(queryString) || "".equals(queryString)) {
+    	  queryString = "";
+      } else {
+    	  // '%' has a special meaning in a query string, so we'll escape it
+    	  queryString = queryString.replaceAll("%", "\\%");
+    	  queryString = queryString + "%";
+      }
+      String dasl = "<d:searchrequest xmlns:d=\"DAV:\">"
++                    "  <d:basicsearch>"
++                    "    <d:select>"
++                    "      <d:prop><d:displayname/></d:prop>"
++                    "    </d:select>"
++                    "    <d:from>"
++                    "      <d:scope>"
++                    "        <d:href>http://localhost:8080/"+userId+"</d:href>"
++                    "        <d:depth>infinity</d:depth>"
++                    "      </d:scope>"
++                    "    </d:from>"
++                    "    <d:where>"
++                    "      <d:like caseless=\"yes\">" 
++                    "        <d:prop><d:displayname/></d:prop>"
++                    "        <d:literal><![CDATA[%"+queryString+"]]></d:literal>"
++                    "      </d:like>"
++                    "    </d:where>"
++                    "    <d:orderby>"
++                    "      <d:order>"
++                    "        <d:prop><d:displayname/></d:prop>"
++                    "        <d:ascending/>"
++                    "      </d:order>"
++                    "    </d:orderby>"
++                    "  </d:basicsearch>"
++                    "</d:searchrequest>";
+      VirtualServer server = VirtualServer.getDefaultVirtualServer();
+      Context ctx = getUserContext(userId, server.getName());
+      DaslStatement statement = new DaslStatement(dasl, ctx, true);
+      DaslResultSet result = statement.executeDaslQuery();
+      while (result.nextEntry()) {
+    	  FileSystemEntry e = result.getCurrentEntry();
+    	  if ( e instanceof File ) {
+    		  rv.add(e.getName());
+    	  }
       }
       return rv;
-    } catch (LoginException e) {
-      e.printStackTrace();
-      return null;
-    } catch (InvalidQueryException e) {
-      e.printStackTrace();
-      return null;
-    } catch (RepositoryException e) {
-      e.printStackTrace();
-      return null;
-    }
+    } catch (XythosException e) {
+		e.printStackTrace();
+		return null;
+	}
   }
 
   public void updateFile(String path, byte[] fileData,
