@@ -58,6 +58,13 @@ public class XythosRemoteImpl implements XythosRemote {
   public boolean ping() {
     return true;
   }
+  
+  private void addBookmark(String userId, String path, String displayName) throws XythosException {
+    VirtualServer defaultServer = VirtualServer.getDefaultVirtualServer();
+    Context context = getUserContext(userId, defaultServer.getName());
+    UserBase user = PrincipalManager.findUser(userId, defaultServer.getName());
+    BookmarkManager.addBookmark(user, defaultServer, path, displayName, context);
+  }
 
   public void createDirectory (String l_username, String l_vsName, 
       String l_homedirectory, String l_name) {                                        
@@ -345,7 +352,7 @@ public class XythosRemoteImpl implements XythosRemote {
     try {
       final String finalPath = path;
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
       ByteArrayOutputStream output = new ByteArrayOutputStream();
       file.getFileContent(output);
       final byte[] data = output.toByteArray();
@@ -388,7 +395,7 @@ public class XythosRemoteImpl implements XythosRemote {
   public long getContentLength(String path, String userId) {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
       return file.getEntrySize();
     } catch (Exception e) {
       return 0;
@@ -398,7 +405,7 @@ public class XythosRemoteImpl implements XythosRemote {
   public String getContentType(String path, String userId) {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
       return file.getFileContentType();
     } catch (Exception e) {
       return null;
@@ -416,7 +423,7 @@ public class XythosRemoteImpl implements XythosRemote {
   public byte[] getFileContent(String path, String userId) {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
       ByteArrayOutputStream output = new ByteArrayOutputStream();
       file.getFileContent(output);
       return output.toByteArray();
@@ -429,9 +436,9 @@ public class XythosRemoteImpl implements XythosRemote {
     Map<String, Object> rv = new HashMap<String, Object>();
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      FileSystemFile file = (FileSystemFile)FileSystem.getEntry(defaultVirtualServer, path, false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      FileSystemFile file = (FileSystemFile)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
       rv.put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
-      com.xythos.storageServer.properties.api.Property[] props = file.getProperties(false, AdminUtil.getContextForAdmin("1.1.1.1"));
+      com.xythos.storageServer.properties.api.Property[] props = file.getProperties(false, getUserContext(userId, defaultVirtualServer.getName()));
       for(com.xythos.storageServer.properties.api.Property prop : props) {
         rv.put(prop.getName(), prop.getValue());
       }
