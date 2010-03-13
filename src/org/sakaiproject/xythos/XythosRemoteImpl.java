@@ -546,4 +546,36 @@ public class XythosRemoteImpl implements XythosRemote {
     }
     
   }
+
+  public void addMember(String groupId, String userId) {
+    try {
+      GlobalGroup group = PrincipalManager.findGlobalGroup(groupId);
+      UserBase user = PrincipalManager.findUser(userId, VirtualServer.getDefaultVirtualServer().getName());
+      group.addMember(user);
+    } catch (XythosException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+  }
+
+  public void createGroup(String groupName, String userId) {
+    final String description = "A group used to share files among members of a site in Sakai.";
+    Context context = null;
+    try {
+      context = AdminUtil.getContextForAdmin("1.1.1.1");
+      String location = VirtualServer.getDefaultVirtualServer().getName();
+      PrincipalManager.createGlobalGroup(groupName, location, description, "admin");
+      context.commitContext();
+      context = null;
+    } catch (XythosException e) {
+      if (context != null) {
+        try {
+          context.rollbackContext();
+        } catch (XythosException e1) {
+          // TODO Auto-generated catch block
+          e1.printStackTrace();
+        }
+      }
+    }
+  }
 }
