@@ -2,10 +2,6 @@ package org.sakaiproject.xythos;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -17,7 +13,6 @@ import java.util.Properties;
 
 import javax.jcr.AccessDeniedException;
 import javax.jcr.InvalidItemStateException;
-import javax.jcr.Item;
 import javax.jcr.ItemExistsException;
 import javax.jcr.LoginException;
 import javax.jcr.Node;
@@ -577,5 +572,10 @@ public class XythosRemoteImpl implements XythosRemote {
         }
       }
     }
+  }
+
+  public void removeDocument(String path, String userId) {
+    // TODO Auto-generated method stub
+    
   }
 }
