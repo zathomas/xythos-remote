@@ -575,7 +575,13 @@ public class XythosRemoteImpl implements XythosRemote {
   }
 
   public void removeDocument(String path, String userId) {
-    // TODO Auto-generated method stub
-    
+    try {
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      FileSystemEntry file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
+      file.delete();
+    } catch (XythosException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
   }
 }
