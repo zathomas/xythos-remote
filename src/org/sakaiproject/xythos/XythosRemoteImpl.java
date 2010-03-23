@@ -453,6 +453,8 @@ public class XythosRemoteImpl implements XythosRemote {
     	  // '%' has a special meaning in a query string, so we'll escape it
     	  queryString = queryString.replaceAll("%", "\\%");
     	  queryString = queryString + "%";
+    	  // we'll translate the * wildcard to ours, which is %
+    	  queryString = queryString.replaceAll("\\*", "%");
       }
       String dasl = "<d:searchrequest xmlns:d=\"DAV:\">"
 +                    "  <d:basicsearch>"
@@ -575,13 +577,27 @@ public class XythosRemoteImpl implements XythosRemote {
   }
 
   public void removeDocument(String path, String userId) {
+    Context ctx = null;
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      FileSystemEntry file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
+      ctx = getUserContext(userId, defaultVirtualServer.getName());
+      FileSystemEntry file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, ctx);
       file.delete();
+      ctx.commitContext();
+      ctx = null;
     } catch (XythosException e) {
       // TODO Auto-generated catch block
       e.printStackTrace();
+    } finally {
+      if (ctx != null) {
+        try {
+          ctx.rollbackContext();
+          ctx = null;
+        } catch (XythosException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        }
+      }
     }
   }
 }
