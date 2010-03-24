@@ -3,6 +3,7 @@ package org.sakaiproject.xythos;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.HashMap;
@@ -544,11 +545,15 @@ public class XythosRemoteImpl implements XythosRemote {
     
   }
 
-  public void addMember(String groupId, String userId) {
+  public void toggleMember(String groupId, String userId) {
     try {
       GlobalGroup group = PrincipalManager.findGlobalGroup(groupId);
       UserBase user = PrincipalManager.findUser(userId, VirtualServer.getDefaultVirtualServer().getName());
-      group.addMember(user);
+      if(Arrays.asList(group.getMembers()).contains(user)) {
+    	  group.removeMember(userId);
+      } else {
+    	  group.addMember(user);
+      }
     } catch (XythosException e) {
       // TODO Auto-generated catch block
       e.printStackTrace();
@@ -564,6 +569,8 @@ public class XythosRemoteImpl implements XythosRemote {
       PrincipalManager.createGlobalGroup(groupName, location, description, "admin");
       context.commitContext();
       context = null;
+      
+      toggleMember(groupName, userId);
     } catch (XythosException e) {
       if (context != null) {
         try {
