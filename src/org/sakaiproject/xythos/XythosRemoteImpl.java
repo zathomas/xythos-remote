@@ -45,6 +45,7 @@ import com.xythos.webdav.dasl.api.DaslResultSet;
 import com.xythos.webdav.dasl.api.DaslStatement;
 
 import edu.nyu.XythosDocument;
+import edu.nyu.XythosDocumentImpl;
 import edu.nyu.XythosRemote;
 
 public class XythosRemoteImpl implements XythosRemote {
@@ -345,47 +346,26 @@ public class XythosRemoteImpl implements XythosRemote {
   }
 
   public XythosDocument getDocument(String path, String userId) {
-    try {
-      final String finalPath = path;
-      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
-      ByteArrayOutputStream output = new ByteArrayOutputStream();
-      file.getFileContent(output);
-      final byte[] data = output.toByteArray();
-      final String contentType = file.getFileContentType();
-      final long contentLength = file.getEntrySize();
+      try {
+        final String finalPath = path;
+        VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+        File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        file.getFileContent(output);
+        final byte[] data = output.toByteArray();
+        final String contentType = file.getFileContentType();
+        final long contentLength = file.getEntrySize();
 //      Repository repository = RepositoryFactory.newRepository(null);
 //      Session session = repository.login(new NoPasswordCredentials(userId));
 //      Node document = (Node)session.getItem(path);
 //      final InputStream data = document.getProperty(JcrConstants.JCR_DATA).getStream();
 //      final String mimeType = document.getProperty(JcrConstants.JCR_MIMETYPE).getString();
 //      final long contentLength = new Long(data.available());
-      return new XythosDocument() {
+        return new XythosDocumentImpl(contentLength, contentType, data, new HashMap<String, Object>(), finalPath);
+      } catch (Exception e) {
+        return null;
+      }
 
-        public long getContentLength() {
-          return contentLength;
-        }
-
-        public String getContentType() {
-          return contentType;
-        }
-
-        public byte[] getDocumentContent() {
-          return data;
-        }
-
-        public Map<String, Object> getProperties() {
-          return new HashMap<String, Object>();
-        }
-
-        public String getUri() {
-          return "http://localhost:9090" + finalPath;
-        }
-
-      };
-    } catch (Exception e) {
-      return null;
-    }
   }
 
   public long getContentLength(String path, String userId) {
@@ -444,8 +424,8 @@ public class XythosRemoteImpl implements XythosRemote {
     }
   }
 
-  public List<String> doSearch(Map<String, Object> searchProperties, String userId) {
-    List<String> rv = new ArrayList<String>();
+  public List<Map<String,Object>> doSearch(Map<String, Object> searchProperties, String userId) {
+    List<Map<String,Object>> rv = new ArrayList<Map<String,Object>>();
     try {
       String queryString = (String) searchProperties.get("q");
       if (queryString == null | "*".equals(queryString) || "".equals(queryString)) {
@@ -489,7 +469,21 @@ public class XythosRemoteImpl implements XythosRemote {
       while (result.nextEntry()) {
     	  FileSystemEntry e = result.getCurrentEntry();
     	  if ( e instanceof File ) {
-    		  rv.add(e.getName());
+    	    String[] pathStems = e.getName().split("/");
+          if (pathStems.length > 2 && pathStems[2].equals("trash")) {
+            continue;
+          }
+    	    Map<String, Object> entry = new HashMap<String, Object>();
+    	    ByteArrayOutputStream output = new ByteArrayOutputStream();
+          ((File)e).getFileContent(output);
+          entry.put("documentContent", null);
+          entry.put("contentType", e.getFileContentType());
+          entry.put("contentLength", e.getEntrySize());
+          Map<String, Object> props = new HashMap<String, Object>();
+          props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
+          entry.put("properties", props);
+          entry.put("uri", "xythos" + e.getName());
+    		  rv.add(entry);
     	  }
       }
       return rv;
@@ -546,13 +540,25 @@ public class XythosRemoteImpl implements XythosRemote {
   }
 
   public void toggleMember(String groupId, String userId) {
+    Context context = null;
     try {
-      GlobalGroup group = PrincipalManager.findGlobalGroup(groupId);
+      context = AdminUtil.getContextForAdmin("1.1.1.1");
+      String location = VirtualServer.getDefaultVirtualServer().getName();
+      GroupArray groups = PrincipalManager.searchForGroups(groupId, "*", location, 1, context);
+      if (groups == null) {
+        return;
+      }
+      Group[] groupsArray = groups.getGroups();
+      if (groupsArray.length < 1) {
+        return;
+      }
+      GlobalGroup group = (GlobalGroup)groupsArray[0];
       UserBase user = PrincipalManager.findUser(userId, VirtualServer.getDefaultVirtualServer().getName());
-      if(Arrays.asList(group.getMembers()).contains(user)) {
-    	  group.removeMember(userId);
+      if((group.getMembers() != null) && Arrays.asList(group.getMembers()).contains(user)) {
+        group.removeMember(userId);
       } else {
-    	  group.addMember(user);
+        group.addMember(user);
+        // and right here is where we would give them a bookmark for the group
       }
     } catch (XythosException e) {
       // TODO Auto-generated catch block
