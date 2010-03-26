@@ -347,7 +347,6 @@ public class XythosRemoteImpl implements XythosRemote {
 
   public XythosDocument getDocument(String path, String userId) {
       try {
-        final String finalPath = path;
         VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
         File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -361,7 +360,9 @@ public class XythosRemoteImpl implements XythosRemote {
 //      final InputStream data = document.getProperty(JcrConstants.JCR_DATA).getStream();
 //      final String mimeType = document.getProperty(JcrConstants.JCR_MIMETYPE).getString();
 //      final long contentLength = new Long(data.available());
-        return new XythosDocumentImpl(contentLength, contentType, data, new HashMap<String, Object>(), finalPath);
+        Map<String, Object> props = new HashMap<String, Object>();
+        props.put("filename", path.substring(path.lastIndexOf("/") + 1));
+        return new XythosDocumentImpl(contentLength, contentType, data, props, "/xythos" + path);
       } catch (Exception e) {
         return null;
       }
@@ -482,7 +483,7 @@ public class XythosRemoteImpl implements XythosRemote {
           Map<String, Object> props = new HashMap<String, Object>();
           props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
           entry.put("properties", props);
-          entry.put("uri", "xythos" + e.getName());
+          entry.put("uri", "/xythos" + e.getName());
     		  rv.add(entry);
     	  }
       }
