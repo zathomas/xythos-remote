@@ -2,6 +2,9 @@ package org.sakaiproject.xythos;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -345,24 +348,21 @@ public class XythosRemoteImpl implements XythosRemote {
     return rv;
   }
 
-  public XythosDocument getDocument(String path, String userId) {
+  public Map<String,Object> getDocument(String path, String userId) {
       try {
         VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
         File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        file.getFileContent(output);
-        final byte[] data = output.toByteArray();
         final String contentType = file.getFileContentType();
         final long contentLength = file.getEntrySize();
-//      Repository repository = RepositoryFactory.newRepository(null);
-//      Session session = repository.login(new NoPasswordCredentials(userId));
-//      Node document = (Node)session.getItem(path);
-//      final InputStream data = document.getProperty(JcrConstants.JCR_DATA).getStream();
-//      final String mimeType = document.getProperty(JcrConstants.JCR_MIMETYPE).getString();
-//      final long contentLength = new Long(data.available());
+        Map<String, Object> entry = new HashMap<String, Object>();
+        entry.put("documentContent", null);
+        entry.put("contentType", contentType);
+        entry.put("contentLength", contentLength);
         Map<String, Object> props = new HashMap<String, Object>();
-        props.put("filename", path.substring(path.lastIndexOf("/") + 1));
-        return new XythosDocumentImpl(contentLength, contentType, data, props, "/xythos" + path);
+        props.put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
+        entry.put("properties", props);
+        entry.put("uri", file.getName());
+        return entry;
       } catch (Exception e) {
         return null;
       }
@@ -397,15 +397,15 @@ public class XythosRemoteImpl implements XythosRemote {
     }
   }
 
-  public byte[] getFileContent(String path, String userId) {
+  public InputStream getFileContent(String path, String userId) {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
       File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
       ByteArrayOutputStream output = new ByteArrayOutputStream();
       file.getFileContent(output);
-      return output.toByteArray();
+      return new ByteArrayInputStream(output.toByteArray());
     } catch (Exception e) {
-      return new byte[]{};
+      return null;
     }
   }
 
@@ -483,7 +483,7 @@ public class XythosRemoteImpl implements XythosRemote {
           Map<String, Object> props = new HashMap<String, Object>();
           props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
           entry.put("properties", props);
-          entry.put("uri", "/xythos" + e.getName());
+          entry.put("uri", e.getName());
     		  rv.add(entry);
     	  }
       }
