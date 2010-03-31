@@ -586,7 +586,7 @@ public class XythosRemoteImpl implements XythosRemote {
   }
 
   public void createGroup(String groupName, String userId) {
-    final String description = "A group used to share files among members of a site in Sakai.";
+    final String description = groupName.substring(groupName.lastIndexOf("/") + 1);
     Context context = null;
     try {
       context = AdminUtil.getContextForAdmin("1.1.1.1");
