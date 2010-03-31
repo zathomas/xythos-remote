@@ -65,6 +65,7 @@
 	  <groupId>org.springframework</groupId>
 	  <artifactId>spring-test</artifactId>
 	  <version>3.0.0.RELEASE</version>
+	  <scope>test</scope>
 	</dependency>
 	<dependency>
 	  <groupId>com.caucho</groupId>
