@@ -3,8 +3,8 @@ package org.sakaiproject.xythos;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -34,7 +34,6 @@ import javax.jcr.query.QueryManager;
 import javax.jcr.query.QueryResult;
 import javax.jcr.version.VersionException;
 
-
 import com.xythos.common.api.*;
 import com.xythos.fileSystem.File;
 import com.xythos.jcr.api.AdminCredentials;
@@ -47,131 +46,141 @@ import com.xythos.storageServer.permissions.api.AccessControlEntry;
 import com.xythos.webdav.dasl.api.DaslResultSet;
 import com.xythos.webdav.dasl.api.DaslStatement;
 
-import edu.nyu.XythosDocument;
-import edu.nyu.XythosDocumentImpl;
 import edu.nyu.XythosRemote;
 
 public class XythosRemoteImpl implements XythosRemote {
-  
+
   private static String ADMIN = "administrator";
 
   public boolean ping() {
     return true;
   }
-  
-  private void addBookmark(String userId, String path, String displayName) throws XythosException {
-    VirtualServer defaultServer = VirtualServer.getDefaultVirtualServer();
-    Context context = getUserContext(userId, defaultServer.getName());
-    UserBase user = PrincipalManager.findUser(userId, defaultServer.getName());
-    BookmarkManager.addBookmark(user, defaultServer, path, displayName, context);
+
+  private void addBookmark(String userId, String path, String displayName)
+      throws XythosException {
+    Context context = null;
+    try {
+      VirtualServer defaultServer = VirtualServer.getDefaultVirtualServer();
+      context = getUserContext(userId, defaultServer.getName());
+      UserBase user = PrincipalManager.findUser(userId, defaultServer.getName());
+      BookmarkManager.addBookmark(user, defaultServer, path, displayName, context);
+      context.commitContext();
+      context = null;
+    } finally {
+      if (context != null) {
+        context.rollbackContext();
+        context = null;
+      }
+    }
   }
 
-  public void createDirectory (String l_username, String l_vsName, 
-      String l_homedirectory, String l_name) {                                        
+  public void createDirectory(String l_username, String l_vsName, String l_homedirectory,
+      String l_name) {
     try {
       Context l_context = null;
-      try {      
+      try {
         VirtualServer l_virtualserver = VirtualServer.find(l_vsName);
         l_context = getUserContext(l_username, l_vsName);
         String l_ownerPrincipalID = l_context.getContextUser().getPrincipalID();
 
         CreateDirectoryData l_data = new CreateDirectoryData(l_virtualserver,
-            l_homedirectory,
-            l_name,
-            l_ownerPrincipalID);
+            l_homedirectory, l_name, l_ownerPrincipalID);
 
         FileSystem.createDirectory(l_data, l_context);
 
         l_context.commitContext();
         l_context = null;
 
-
-
       } finally {
         if (l_context != null) {
           l_context.rollbackContext();
-          l_context = null; 
-        }  
+          l_context = null;
+        }
       }
     } catch (Exception l_e) {
       try {
       } catch (Exception l_e2) {
-        l_e2.printStackTrace();        
+        l_e2.printStackTrace();
       }
     }
   }
-  private static Context getUserContext(String p_username, String p_virtualserver) 
-  throws XythosException {
-    UserBase l_user = null;  
-    Context l_context = null;  
+
+  private static Context getUserContext(String p_username, String p_virtualserver)
+      throws XythosException {
+    UserBase l_user = null;
+    Context l_context = null;
     if (p_username == null)
       throw new WFSSecurityException("The user field was empty!");
     if (p_username.equalsIgnoreCase(ADMIN)) {
-      return(AdminUtil.getContextForAdmin("1.1.1.1"));
+      return (AdminUtil.getContextForAdmin("1.1.1.1"));
     }
 
     l_user = PrincipalManager.findUser(p_username, p_virtualserver);
-    if (l_user == null) 
+    if (l_user == null)
       throw new WFSSecurityException("No user found!");
 
     Properties l_prop = new Properties();
     l_prop.put("Xythos.Logger.IPAddress", "192.168.0.27");
 
-    l_context = ContextFactory.create(l_user,
-        l_prop);
+    l_context = ContextFactory.create(l_user, l_prop);
 
-    return l_context;  
+    return l_context;
   }
-  
-    public String findAllFilesForUser(String l_username) {
-      List<String> permittedFiles = new ArrayList<String>();
-        try {
-        Context l_context = null;
-          l_context = AdminUtil.getContextForAdmin("1.1.1.1");
-          VirtualServer vServer = VirtualServer.getDefaultVirtualServer();
-          UserBase l_principal = PrincipalManager.findUser(l_username, vServer.getName());
-          String[] topLevelDirectories = FileSystem.findTopLevelDirectoryEntries(vServer, l_context);
-          for (String dirName : topLevelDirectories) {
-            FileSystemTopLevelDirectory topDir = FileSystem.findTopLevelDirectoryEntry(vServer, dirName, l_context);
-            FileSystemDirectory dir = topDir.getFileSystemDirectory(false, l_context);
-            permittedFiles.addAll(permittedFilesForEntry(l_principal.getPrincipalID(), dir));  
-          }
-          StringBuffer fileList = new StringBuffer();
-          for (String filename : permittedFiles) {
-            fileList.append(filename + ", ");
-          }
-          return fileList.toString();
-      } catch (XythosException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-        return "error";
-      }     
+
+  public String findAllFilesForUser(String l_username) {
+    List<String> permittedFiles = new ArrayList<String>();
+    try {
+      Context l_context = null;
+      l_context = AdminUtil.getContextForAdmin("1.1.1.1");
+      VirtualServer vServer = VirtualServer.getDefaultVirtualServer();
+      UserBase l_principal = PrincipalManager.findUser(l_username, vServer.getName());
+      String[] topLevelDirectories = FileSystem.findTopLevelDirectoryEntries(vServer,
+          l_context);
+      for (String dirName : topLevelDirectories) {
+        FileSystemTopLevelDirectory topDir = FileSystem.findTopLevelDirectoryEntry(
+            vServer, dirName, l_context);
+        FileSystemDirectory dir = topDir.getFileSystemDirectory(false, l_context);
+        permittedFiles.addAll(permittedFilesForEntry(l_principal.getPrincipalID(), dir));
+      }
+      StringBuffer fileList = new StringBuffer();
+      for (String filename : permittedFiles) {
+        fileList.append(filename + ", ");
+      }
+      return fileList.toString();
+    } catch (XythosException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+      return "error";
     }
-    
-    public Collection<Map<String,String>> findFilesWithXPath(String searchQuery, String userId) {
-      Collection<Map<String,String>> rv = new ArrayList<Map<String,String>>();
-      try {
+  }
+
+  public Collection<Map<String, String>> findFilesWithXPath(String searchQuery,
+      String userId) {
+    Collection<Map<String, String>> rv = new ArrayList<Map<String, String>>();
+    try {
       Repository repository = RepositoryFactory.newRepository(null);
-        Session session = repository.login(new NoPasswordCredentials(userId));
-        session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
-        session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
-        QueryManager queryManager = session.getWorkspace().getQueryManager();
-        Query query = queryManager.createQuery(searchQuery, Query.XPATH);
-        Map<String, String> rowMap = null;
-        QueryResult result = query.execute();
-        for (Iterator<?> i = result.getNodes();i.hasNext(); ) {
-          rowMap = new HashMap<String,String>();
-          Node node = (Node)i.next();
-          for (Iterator<?> j = node.getProperties();j.hasNext(); ) {
-            javax.jcr.Property prop = (javax.jcr.Property)j.next();
-            if (!prop.getDefinition().isMultiple()) {
-              rowMap.put(prop.getName(), prop.getValue().getString());
-            }
+      Session session = repository.login(new NoPasswordCredentials(userId));
+      session.getWorkspace().getNamespaceRegistry().registerNamespace(
+          JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
+      session.getWorkspace().getNamespaceRegistry().registerNamespace("sling",
+          "http://sling.apache.org/jcr/sling/1.0");
+      QueryManager queryManager = session.getWorkspace().getQueryManager();
+      Query query = queryManager.createQuery(searchQuery, Query.XPATH);
+      Map<String, String> rowMap = null;
+      QueryResult result = query.execute();
+      for (Iterator<?> i = result.getNodes(); i.hasNext();) {
+        rowMap = new HashMap<String, String>();
+        Node node = (Node) i.next();
+        for (Iterator<?> j = node.getProperties(); j.hasNext();) {
+          javax.jcr.Property prop = (javax.jcr.Property) j.next();
+          if (!prop.getDefinition().isMultiple()) {
+            rowMap.put(prop.getName(), prop.getValue().getString());
           }
-          rowMap.put("jcr:path", node.getPath());
-          rv.add(rowMap);
         }
-        return rv;
+        rowMap.put("jcr:path", node.getPath());
+        rv.add(rowMap);
+      }
+      return rv;
     } catch (LoginException e) {
       e.printStackTrace();
       return null;
@@ -182,163 +191,173 @@ public class XythosRemoteImpl implements XythosRemote {
       e.printStackTrace();
       return null;
     }
-    }
-    
-    private List<String> permittedFilesForEntry(String l_username,
-        FileSystemEntry entry) {
-      List<String> rv = new ArrayList<String>();
-      try {
-        if (userCanRead(l_username, entry)) {
-          rv.add(entry.getName());
+  }
+
+  private List<String> permittedFilesForEntry(String l_username, FileSystemEntry entry) {
+    List<String> rv = new ArrayList<String>();
+    try {
+      if (userCanRead(l_username, entry)) {
+        rv.add(entry.getName());
+      }
+      if (entry instanceof FileSystemDirectory) {
+        FileSystemEntry[] contents = ((FileSystemDirectory) entry).getFindableEntries();
+        for (FileSystemEntry child : contents) {
+          rv.addAll(permittedFilesForEntry(l_username, child));
         }
-        if (entry instanceof FileSystemDirectory) {
-          FileSystemEntry[] contents = ((FileSystemDirectory)entry).getFindableEntries();
-          for (FileSystemEntry child : contents) {
-            rv.addAll(permittedFilesForEntry(l_username, child));
+      }
+    } catch (XythosException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+    return rv;
+
+  }
+
+  private boolean userCanRead(String userPrincipalId, FileSystemEntry entry) {
+    try {
+      if (entry.getEntryOwnerPrincipalID().equalsIgnoreCase(userPrincipalId))
+        return true;
+      List<String> searchPrincipals = new ArrayList<String>();
+      searchPrincipals.add(userPrincipalId);
+      GroupArray globalGroups = PrincipalManager.searchForGroups("*", "*", "*",
+          PrincipalManager.PRINCIPAL_SEARCH_UNLIMITED_RESULTS, null);
+      for (Group g : globalGroups.getGroups()) {
+        if (g.getMembers() != null) {
+          for (Principal p : g.getMembers()) {
+            if (p.getPrincipalID().equalsIgnoreCase(userPrincipalId))
+              searchPrincipals.add(g.getPrincipalID());
           }
         }
-      } catch (XythosException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
       }
-      return rv;
-
+      for (String principalId : searchPrincipals) {
+        AccessControlEntry ace = entry.getAccessControlEntry(principalId);
+        if (ace.isReadable())
+          return true;
+      }
+      return false;
+    } catch (XythosException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+      return false;
     }
+  }
 
-    private boolean userCanRead(String userPrincipalId, FileSystemEntry entry) {
+  public String saveFile(String path, String id, byte[] contentBytes, String fileName,
+      String contentType, String userId) {
+    if (fileName != null && !fileName.equals("")) {
+      // Clean the filename.
+      Repository repository;
       try {
-        if (entry.getEntryOwnerPrincipalID().equalsIgnoreCase(userPrincipalId)) return true;
-        List<String> searchPrincipals = new ArrayList<String>();
-        searchPrincipals.add(userPrincipalId);
-        GroupArray globalGroups = PrincipalManager.searchForGroups("*", "*", "*", PrincipalManager.PRINCIPAL_SEARCH_UNLIMITED_RESULTS, null);
-        for (Group g : globalGroups.getGroups()) {
-          if (g.getMembers() != null) {
-            for (Principal p : g.getMembers()) {
-              if (p.getPrincipalID().equalsIgnoreCase(userPrincipalId)) searchPrincipals.add(g.getPrincipalID());
-            }
-          }
-        }
-        for (String principalId : searchPrincipals) {
-          AccessControlEntry ace = entry.getAccessControlEntry(principalId);
-          if (ace.isReadable()) return true;
-        }
-        return false;
-      } catch (XythosException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-        return false;
-      }
-    }
-
-    public String saveFile(String path, String id, byte[] contentBytes, String fileName,
-        String contentType, String userId) {
-      if (fileName != null && !fileName.equals("")) {
-        // Clean the filename.
-        Repository repository;
-        try {
-          repository = RepositoryFactory.newRepository(null);
+        repository = RepositoryFactory.newRepository(null);
         Session session = null;
         session = repository.login(new NoPasswordCredentials(userId));
-        session.getWorkspace().getNamespaceRegistry().registerNamespace(JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
-        session.getWorkspace().getNamespaceRegistry().registerNamespace("sling", "http://sling.apache.org/jcr/sling/1.0");
+        session.getWorkspace().getNamespaceRegistry().registerNamespace(
+            JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
+        session.getWorkspace().getNamespaceRegistry().registerNamespace("sling",
+            "http://sling.apache.org/jcr/sling/1.0");
         Node fileNode = null;
 
         // Create or get the file.
-          if ( !session.itemExists(path) ) {
-            // create the node administratively, and set permissions
-            Session adminSession = null;
-            try {
-              adminSession = repository.login(new AdminCredentials("test"));
+        if (!session.itemExists(path)) {
+          // create the node administratively, and set permissions
+          Session adminSession = null;
+          try {
+            adminSession = repository.login(new AdminCredentials("test"));
 
-              fileNode = JcrUtils.deepGetOrCreateNode(adminSession, path, JcrConstants.NT_FILE);
-              Node content = null;
-              if (fileNode.canAddMixin(JcrConstants.MIX_REFERENCEABLE)) {
-                fileNode.addMixin(JcrConstants.MIX_REFERENCEABLE);
-              }
-              //fileNode.addMixin("sakai:propertiesmix");
-              fileNode.setProperty("sling:resourceType","sakai/file");
-              fileNode.setProperty("sakai:id", id);
-
-              // Create the content node.
-              content = fileNode.addNode(JcrConstants.JCR_CONTENT, JcrConstants.NT_RESOURCE);
-              content.setProperty(JcrConstants.JCR_DATA, new ByteArrayInputStream(contentBytes));
-              content.setProperty(JcrConstants.JCR_MIMETYPE, contentType);
-              content.setProperty(JcrConstants.JCR_LASTMODIFIED, Calendar.getInstance());
-              // Set the person who last modified it.s
-              fileNode.setProperty("sakai:user", userId);
-
-              fileNode.setProperty("sakai:filename", fileName);
-              if (adminSession.hasPendingChanges()) {
-                adminSession.save();
-              }
-            } catch (Exception e) {
-              // woah, what happened here?
-              e.printStackTrace();
-            } finally {
-              adminSession.logout();
-            }
-            // Node rv = (Node) session.getItem(path);
-            return "http://localhost:9090" + path;
-          } else {
-            fileNode = (Node) session.getItem(path);
-            // This is not a new node, so we should already have a content node.
-            // Just in case.. catch it
+            fileNode = JcrUtils.deepGetOrCreateNode(adminSession, path,
+                JcrConstants.NT_FILE);
             Node content = null;
-            try {
-              content = fileNode.getNode(JcrConstants.JCR_CONTENT);
-            } catch (PathNotFoundException pnfe) {
-              content = fileNode.addNode(JcrConstants.JCR_CONTENT, JcrConstants.NT_RESOURCE);
+            if (fileNode.canAddMixin(JcrConstants.MIX_REFERENCEABLE)) {
+              fileNode.addMixin(JcrConstants.MIX_REFERENCEABLE);
             }
+            // fileNode.addMixin("sakai:propertiesmix");
+            fileNode.setProperty("sling:resourceType", "sakai/file");
+            fileNode.setProperty("sakai:id", id);
 
-            content.setProperty(JcrConstants.JCR_DATA, new ByteArrayInputStream(contentBytes));
+            // Create the content node.
+            content = fileNode
+                .addNode(JcrConstants.JCR_CONTENT, JcrConstants.NT_RESOURCE);
+            content.setProperty(JcrConstants.JCR_DATA, new ByteArrayInputStream(
+                contentBytes));
             content.setProperty(JcrConstants.JCR_MIMETYPE, contentType);
             content.setProperty(JcrConstants.JCR_LASTMODIFIED, Calendar.getInstance());
-            // Set the person who last modified it.
-            // fileNode.setProperty("sakai:user", session.getUserID());
+            // Set the person who last modified it.s
+            fileNode.setProperty("sakai:user", userId);
 
-            // fileNode.setProperty("sakai:filename", fileName);
-            if (session.hasPendingChanges()) {
-              session.save();
+            fileNode.setProperty("sakai:filename", fileName);
+            if (adminSession.hasPendingChanges()) {
+              adminSession.save();
             }
-            return "http://localhost:9090" + path;
+          } catch (Exception e) {
+            // woah, what happened here?
+            e.printStackTrace();
+          } finally {
+            adminSession.logout();
           }
-        } catch (LoginException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (NoSuchNodeTypeException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (VersionException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (ConstraintViolationException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (LockException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (ValueFormatException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (ItemExistsException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (PathNotFoundException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (AccessDeniedException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (InvalidItemStateException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        } catch (RepositoryException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
+          // Node rv = (Node) session.getItem(path);
+          return "http://localhost:9090" + path;
+        } else {
+          fileNode = (Node) session.getItem(path);
+          // This is not a new node, so we should already have a content node.
+          // Just in case.. catch it
+          Node content = null;
+          try {
+            content = fileNode.getNode(JcrConstants.JCR_CONTENT);
+          } catch (PathNotFoundException pnfe) {
+            content = fileNode
+                .addNode(JcrConstants.JCR_CONTENT, JcrConstants.NT_RESOURCE);
+          }
+
+          content.setProperty(JcrConstants.JCR_DATA, new ByteArrayInputStream(
+              contentBytes));
+          content.setProperty(JcrConstants.JCR_MIMETYPE, contentType);
+          content.setProperty(JcrConstants.JCR_LASTMODIFIED, Calendar.getInstance());
+          // Set the person who last modified it.
+          // fileNode.setProperty("sakai:user", session.getUserID());
+
+          // fileNode.setProperty("sakai:filename", fileName);
+          if (session.hasPendingChanges()) {
+            session.save();
+          }
+          return "http://localhost:9090" + path;
         }
+      } catch (LoginException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (NoSuchNodeTypeException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (VersionException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (ConstraintViolationException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (LockException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (ValueFormatException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (ItemExistsException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (PathNotFoundException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (AccessDeniedException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (InvalidItemStateException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (RepositoryException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
       }
-      return null;
     }
+    return null;
+  }
 
   public Map<String, String> getProperties() {
     Map<String, String> rv = new HashMap<String, String>();
@@ -348,31 +367,37 @@ public class XythosRemoteImpl implements XythosRemote {
     return rv;
   }
 
-  public Map<String,Object> getDocument(String path, String userId) {
-      try {
-        VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-        File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
-        final String contentType = file.getFileContentType();
-        final long contentLength = file.getEntrySize();
-        Map<String, Object> entry = new HashMap<String, Object>();
-        entry.put("documentContent", null);
-        entry.put("contentType", contentType);
-        entry.put("contentLength", contentLength);
-        Map<String, Object> props = new HashMap<String, Object>();
-        props.put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
-        entry.put("properties", props);
-        entry.put("uri", file.getName());
-        return entry;
-      } catch (Exception e) {
-        return null;
-      }
+  public Map<String, Object> getDocument(String path, String userId) {
+    try {
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
+          getUserContext(userId, defaultVirtualServer.getName()));
+      final String contentType = file.getFileContentType();
+      final long contentLength = file.getEntrySize();
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      file.getFileContent(output);
+      Map<String, Object> entry = new HashMap<String, Object>();
+      entry.put("documentContent", null);
+      entry.put("contentType", contentType);
+      entry.put("contentLength", contentLength);
+      Map<String, Object> props = new HashMap<String, Object>();
+      props
+          .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
+      entry.put("properties", props);
+      entry.put("uri", file.getName());
+      return entry;
+    } catch (Exception e) {
+      return null;
+    }
 
   }
 
   public long getContentLength(String path, String userId) {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, path, false,
+          getUserContext(userId, defaultVirtualServer.getName()));
       return file.getEntrySize();
     } catch (Exception e) {
       return 0;
@@ -382,7 +407,8 @@ public class XythosRemoteImpl implements XythosRemote {
   public String getContentType(String path, String userId) {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, path, false,
+          getUserContext(userId, defaultVirtualServer.getName()));
       return file.getFileContentType();
     } catch (Exception e) {
       return null;
@@ -397,13 +423,14 @@ public class XythosRemoteImpl implements XythosRemote {
     }
   }
 
-  public InputStream getFileContent(String path, String userId) {
+  public byte[] getFileContent(String path, String userId) {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
+          getUserContext(userId, defaultVirtualServer.getName()));
       ByteArrayOutputStream output = new ByteArrayOutputStream();
       file.getFileContent(output);
-      return new ByteArrayInputStream(output.toByteArray());
+      return output.toByteArray();
     } catch (Exception e) {
       return null;
     }
@@ -413,10 +440,12 @@ public class XythosRemoteImpl implements XythosRemote {
     Map<String, Object> rv = new HashMap<String, Object>();
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      FileSystemFile file = (FileSystemFile)FileSystem.getEntry(defaultVirtualServer, path, false, getUserContext(userId, defaultVirtualServer.getName()));
+      FileSystemFile file = (FileSystemFile) FileSystem.getEntry(defaultVirtualServer,
+          path, false, getUserContext(userId, defaultVirtualServer.getName()));
       rv.put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
-      com.xythos.storageServer.properties.api.Property[] props = file.getProperties(false, getUserContext(userId, defaultVirtualServer.getName()));
-      for(com.xythos.storageServer.properties.api.Property prop : props) {
+      com.xythos.storageServer.properties.api.Property[] props = file.getProperties(
+          false, getUserContext(userId, defaultVirtualServer.getName()));
+      for (com.xythos.storageServer.properties.api.Property prop : props) {
         rv.put(prop.getName(), prop.getValue());
       }
       return rv;
@@ -425,58 +454,44 @@ public class XythosRemoteImpl implements XythosRemote {
     }
   }
 
-  public List<Map<String,Object>> doSearch(Map<String, Object> searchProperties, String userId) {
-    List<Map<String,Object>> rv = new ArrayList<Map<String,Object>>();
+  public List<Map<String, Object>> doSearch(Map<String, Object> searchProperties,
+      String userId) {
+    List<Map<String, Object>> rv = new ArrayList<Map<String, Object>>();
     try {
       String queryString = (String) searchProperties.get("q");
       if (queryString == null | "*".equals(queryString) || "".equals(queryString)) {
-    	  queryString = "";
+        queryString = "";
       } else {
-    	  // '%' has a special meaning in a query string, so we'll escape it
-    	  queryString = queryString.replaceAll("%", "\\%");
-    	  queryString = queryString + "%";
-    	  // we'll translate the * wildcard to ours, which is %
-    	  queryString = queryString.replaceAll("\\*", "%");
+        // '%' has a special meaning in a query string, so we'll escape it
+        queryString = queryString.replaceAll("%", "\\%");
+        queryString = queryString + "%";
+        // we'll translate the * wildcard to ours, which is %
+        queryString = queryString.replaceAll("\\*", "%");
       }
-      String dasl = "<d:searchrequest xmlns:d=\"DAV:\">"
-+                    "  <d:basicsearch>"
-+                    "    <d:select>"
-+                    "      <d:prop><d:displayname/></d:prop>"
-+                    "    </d:select>"
-+                    "    <d:from>"
-+                    "      <d:scope>"
-+                    "        <d:href>http://localhost:8080/"+userId+"</d:href>"
-+                    "        <d:depth>infinity</d:depth>"
-+                    "      </d:scope>"
-+                    "    </d:from>"
-+                    "    <d:where>"
-+                    "      <d:like caseless=\"yes\">" 
-+                    "        <d:prop><d:displayname/></d:prop>"
-+                    "        <d:literal><![CDATA[%"+queryString+"]]></d:literal>"
-+                    "      </d:like>"
-+                    "    </d:where>"
-+                    "    <d:orderby>"
-+                    "      <d:order>"
-+                    "        <d:prop><d:displayname/></d:prop>"
-+                    "        <d:ascending/>"
-+                    "      </d:order>"
-+                    "    </d:orderby>"
-+                    "  </d:basicsearch>"
-+                    "</d:searchrequest>";
+      String dasl = "<d:searchrequest xmlns:d=\"DAV:\">" + "  <d:basicsearch>"
+          + "    <d:select>" + "      <d:prop><d:displayname/></d:prop>"
+          + "    </d:select>" + "    <d:from>" + "      <d:scope>"
+          + "        <d:href>http://localhost:8080/" + userId + "</d:href>"
+          + "        <d:depth>infinity</d:depth>" + "      </d:scope>" + "    </d:from>"
+          + "    <d:where>" + "      <d:like caseless=\"yes\">"
+          + "        <d:prop><d:displayname/></d:prop>" + "        <d:literal><![CDATA[%"
+          + queryString + "]]></d:literal>" + "      </d:like>" + "    </d:where>"
+          + "    <d:orderby>" + "      <d:order>"
+          + "        <d:prop><d:displayname/></d:prop>" + "        <d:ascending/>"
+          + "      </d:order>" + "    </d:orderby>" + "  </d:basicsearch>"
+          + "</d:searchrequest>";
       VirtualServer server = VirtualServer.getDefaultVirtualServer();
       Context ctx = getUserContext(userId, server.getName());
       DaslStatement statement = new DaslStatement(dasl, ctx, true);
       DaslResultSet result = statement.executeDaslQuery();
       while (result.nextEntry()) {
-    	  FileSystemEntry e = result.getCurrentEntry();
-    	  if ( e instanceof File ) {
-    	    String[] pathStems = e.getName().split("/");
+        FileSystemEntry e = result.getCurrentEntry();
+        if (e instanceof File) {
+          String[] pathStems = e.getName().split("/");
           if (pathStems.length > 2 && pathStems[2].equals("trash")) {
             continue;
           }
-    	    Map<String, Object> entry = new HashMap<String, Object>();
-    	    ByteArrayOutputStream output = new ByteArrayOutputStream();
-          ((File)e).getFileContent(output);
+          Map<String, Object> entry = new HashMap<String, Object>();
           entry.put("documentContent", null);
           entry.put("contentType", e.getFileContentType());
           entry.put("contentLength", e.getEntrySize());
@@ -484,39 +499,39 @@ public class XythosRemoteImpl implements XythosRemote {
           props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
           entry.put("properties", props);
           entry.put("uri", e.getName());
-    		  rv.add(entry);
-    	  }
+          rv.add(entry);
+        }
       }
       return rv;
     } catch (XythosException e) {
-		e.printStackTrace();
-		return null;
-	}
+      e.printStackTrace();
+      return null;
+    }
   }
 
-  public void updateFile(String path, byte[] fileData,
-      Map<String, Object> properties, String userId) {
+  public void updateFile(String path, byte[] fileData, Map<String, Object> properties,
+      String userId) {
     Session session = null;
     try {
       Repository repository = RepositoryFactory.newRepository(null);
-        session = repository.login(new NoPasswordCredentials(userId));
-        if (session.itemExists(path)) {
-          Node fileNode = (Node) session.getItem(path);
-          fileNode.setProperty("jcr:data", new ByteArrayInputStream(fileData));
-          fileNode.save();
-        } else {
-          // get the parent node
-          Node parent = (Node)session.getItem(path.substring(0, path.lastIndexOf("/")));
-          // add file node
-          Node file = parent.addNode(path.substring(path.lastIndexOf("/") + 1), "nt:file"); 
-          // add jcr:content child node
-          Node content = file.addNode("jcr:content", "nt:resource"); 
-          content.setProperty("jcr:data", new ByteArrayInputStream(fileData));
-          if (properties.containsKey("contentType")) {
-            content.setProperty("jcr:mimeType", (String)properties.get("contentType"));
-          }
-          parent.save();
+      session = repository.login(new NoPasswordCredentials(userId));
+      if (session.itemExists(path)) {
+        Node fileNode = (Node) session.getItem(path);
+        fileNode.setProperty("jcr:data", new ByteArrayInputStream(fileData));
+        fileNode.save();
+      } else {
+        // get the parent node
+        Node parent = (Node) session.getItem(path.substring(0, path.lastIndexOf("/")));
+        // add file node
+        Node file = parent.addNode(path.substring(path.lastIndexOf("/") + 1), "nt:file");
+        // add jcr:content child node
+        Node content = file.addNode("jcr:content", "nt:resource");
+        content.setProperty("jcr:data", new ByteArrayInputStream(fileData));
+        if (properties.containsKey("contentType")) {
+          content.setProperty("jcr:mimeType", (String) properties.get("contentType"));
         }
+        parent.save();
+      }
     } catch (ValueFormatException e) {
       // TODO Auto-generated catch block
       e.printStackTrace();
@@ -533,11 +548,11 @@ public class XythosRemoteImpl implements XythosRemote {
       // TODO Auto-generated catch block
       e.printStackTrace();
     } finally {
-      if (session != null){
+      if (session != null) {
         session.logout();
       }
     }
-    
+
   }
 
   public void toggleMember(String groupId, String userId) {
@@ -545,7 +560,8 @@ public class XythosRemoteImpl implements XythosRemote {
     try {
       context = AdminUtil.getContextForAdmin("1.1.1.1");
       String location = VirtualServer.getDefaultVirtualServer().getName();
-      GroupArray groups = PrincipalManager.searchForGroups(groupId, "*", location, 1, context);
+      GroupArray groups = PrincipalManager.searchForGroups(groupId, "*", location, 1,
+          context);
       if (groups == null) {
         return;
       }
@@ -553,13 +569,15 @@ public class XythosRemoteImpl implements XythosRemote {
       if (groupsArray.length < 1) {
         return;
       }
-      GlobalGroup group = (GlobalGroup)groupsArray[0];
-      UserBase user = PrincipalManager.findUser(userId, VirtualServer.getDefaultVirtualServer().getName());
-      if((group.getMembers() != null) && Arrays.asList(group.getMembers()).contains(user)) {
+      GlobalGroup group = (GlobalGroup) groupsArray[0];
+      UserBase user = PrincipalManager.findUser(userId, VirtualServer
+          .getDefaultVirtualServer().getName());
+      if ((group.getMembers() != null)
+          && Arrays.asList(group.getMembers()).contains(user)) {
         group.removeMember(userId);
       } else {
         group.addMember(user);
-        // and right here is where we would give them a bookmark for the group
+        addBookmark(userId, groupId, groupId.substring(groupId.lastIndexOf("/") + 1));
       }
     } catch (XythosException e) {
       // TODO Auto-generated catch block
@@ -576,7 +594,7 @@ public class XythosRemoteImpl implements XythosRemote {
       PrincipalManager.createGlobalGroup(groupName, location, description, "admin");
       context.commitContext();
       context = null;
-      
+
       toggleMember(groupName, userId);
     } catch (XythosException e) {
       if (context != null) {
@@ -595,7 +613,8 @@ public class XythosRemoteImpl implements XythosRemote {
     try {
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
       ctx = getUserContext(userId, defaultVirtualServer.getName());
-      FileSystemEntry file = (File)FileSystem.getEntry(defaultVirtualServer, path, false, ctx);
+      FileSystemEntry file = (File) FileSystem.getEntry(defaultVirtualServer, path,
+          false, ctx);
       file.delete();
       ctx.commitContext();
       ctx = null;
@@ -614,4 +633,49 @@ public class XythosRemoteImpl implements XythosRemote {
       }
     }
   }
+
+  public boolean shareFileWithGroup(String groupId, String filePath, String userId) {
+    try {
+      Context context = null;
+      try {
+        VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+        context = getUserContext(userId, defaultVirtualServer.getName());
+        FileSystemEntry entry = FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(filePath, "utf-8"), true, context);
+        if (entry == null) {
+          return false;
+        }
+        AccessControlEntry ace = entry.getAccessControlEntry(groupId);
+
+        // setting up permissions
+        Boolean l_readable = Boolean.TRUE;
+        Boolean l_writeable = Boolean.FALSE;
+        Boolean l_deleteable = Boolean.FALSE;
+        Boolean l_permissionable = Boolean.FALSE;
+
+        if (entry instanceof FileSystemFile) {
+          ace.setAccessControlEntry(l_readable, l_writeable, l_deleteable,
+              l_permissionable);
+        }
+
+        context.commitContext();
+        context = null;
+      } catch (UnsupportedEncodingException e) {
+        return false;
+      } finally {
+        if (context != null) {
+          context.rollbackContext();
+          context = null;
+        }
+      }
+    } catch (XythosException e) {
+      return false;
+    }
+    return true;
+  }
+
+  public InputStream getFileContentStream(String arg0, String arg1) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
 }
