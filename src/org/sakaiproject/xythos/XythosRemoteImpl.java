@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -51,6 +52,8 @@ import edu.nyu.XythosRemote;
 public class XythosRemoteImpl implements XythosRemote {
 
   private static String ADMIN = "administrator";
+  
+  private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   public boolean ping() {
     return true;
@@ -384,6 +387,7 @@ public class XythosRemoteImpl implements XythosRemote {
       Map<String, Object> props = new HashMap<String, Object>();
       props
           .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
+      props.put("lastmodified", dateFormat.format(file.getLastUpdateTimestamp()));
       entry.put("properties", props);
       entry.put("uri", file.getName());
       return entry;
@@ -497,6 +501,7 @@ public class XythosRemoteImpl implements XythosRemote {
           entry.put("contentLength", e.getEntrySize());
           Map<String, Object> props = new HashMap<String, Object>();
           props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
+          props.put("lastmodified", dateFormat.format(e.getLastUpdateTimestamp()));
           entry.put("properties", props);
           entry.put("uri", e.getName());
           rv.add(entry);
@@ -569,7 +574,16 @@ public class XythosRemoteImpl implements XythosRemote {
       if (groupsArray.length < 1) {
         return;
       }
-      GlobalGroup group = (GlobalGroup) groupsArray[0];
+      GlobalGroup group = null;
+      for (int i = 0; i < groupsArray.length; i++) {
+        if (((GlobalGroup)groupsArray[i]).getName().equals(groupId)) {
+          group = (GlobalGroup) groupsArray[i];
+          break;
+        }
+      }
+      if (group == null) {
+        return;
+      }
       UserBase user = PrincipalManager.findUser(userId, VirtualServer
           .getDefaultVirtualServer().getName());
       if ((group.getMembers() != null)
@@ -639,12 +653,35 @@ public class XythosRemoteImpl implements XythosRemote {
       Context context = null;
       try {
         VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-        context = getUserContext(userId, defaultVirtualServer.getName());
+        String location = defaultVirtualServer.getName();
+        context = getUserContext(userId, location);
         FileSystemEntry entry = FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(filePath, "utf-8"), true, context);
         if (entry == null) {
           return false;
         }
-        AccessControlEntry ace = entry.getAccessControlEntry(groupId);
+        // get the group based on its name
+        GroupArray groups = PrincipalManager.searchForGroups(groupId, "*", location, 1,
+            context);
+        if (groups == null) {
+          return false;
+        }
+        Group[] groupsArray = groups.getGroups();
+        if (groupsArray.length < 1) {
+          return false;
+        }
+        
+        GlobalGroup group = null;
+        for (int i = 0; i < groupsArray.length; i++) {
+          if (((GlobalGroup)groupsArray[i]).getName().equals(groupId)) {
+            group = (GlobalGroup) groupsArray[i];
+            break;
+          }
+        }
+        
+        if (group == null) {
+          return false;
+        }
+        AccessControlEntry ace = entry.getAccessControlEntry(group.getPrincipalID());
 
         // setting up permissions
         Boolean l_readable = Boolean.TRUE;
