@@ -2,7 +2,10 @@ package org.sakaiproject.xythos;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.text.SimpleDateFormat;
@@ -35,6 +38,14 @@ import javax.jcr.query.QueryManager;
 import javax.jcr.query.QueryResult;
 import javax.jcr.version.VersionException;
 
+import org.im4java.core.ConvertCmd;
+import org.im4java.core.IM4JavaException;
+import org.im4java.core.IMOperation;
+import org.im4java.core.IdentifyCmd;
+import org.im4java.process.ArrayListOutputConsumer;
+import org.im4java.process.Pipe;
+import org.im4java.process.ProcessStarter;
+
 import com.xythos.common.api.*;
 import com.xythos.fileSystem.File;
 import com.xythos.jcr.api.AdminCredentials;
@@ -52,6 +63,8 @@ import edu.nyu.XythosRemote;
 public class XythosRemoteImpl implements XythosRemote {
 
   private static String ADMIN = "administrator";
+  
+  private static final List<String> DIMENSIONABLE_MIME_TYPES = Arrays.asList(new String[] {"image/jpeg","image/png","image/gif","image/tiff","image/bmp"});
   
   private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
@@ -385,6 +398,11 @@ public class XythosRemoteImpl implements XythosRemote {
       entry.put("contentType", contentType);
       entry.put("contentLength", contentLength);
       Map<String, Object> props = new HashMap<String, Object>();
+      if (fileHasDimensions(contentType)) {
+        readFileDimensionsIntoProperties(output, props);
+      }
+      readFileDimensionsIntoProperties(output, props);
+
       props
           .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
       props.put("lastmodified", dateFormat.format(file.getLastUpdateTimestamp()));
@@ -395,6 +413,32 @@ public class XythosRemoteImpl implements XythosRemote {
       return null;
     }
 
+  }
+
+  private void readFileDimensionsIntoProperties(ByteArrayOutputStream output,
+      Map<String, Object> props) throws IOException, InterruptedException,
+      IM4JavaException {
+    ProcessStarter.setGlobalSearchPath("/opt/local/bin");
+    IdentifyCmd cmd = new IdentifyCmd();
+    Pipe pipeIn = new Pipe(new ByteArrayInputStream(output.toByteArray()), null);
+    ArrayListOutputConsumer pipeOut = new ArrayListOutputConsumer();
+    cmd.setInputProvider(pipeIn);
+    // create the operation, add images and operators/options
+    IMOperation op = new IMOperation();
+    op.format("%[fx:w]\\n%[fx:h]");
+    op.addImage("-");
+ 
+    cmd.run(op);
+    
+    List<String> imageMagickOutput = pipeOut.getOutput();
+    if (imageMagickOutput.size() == 2) {
+      props.put("width", imageMagickOutput.get(0));
+      props.put("height", imageMagickOutput.get(1));
+    }
+  }
+
+  private boolean fileHasDimensions(String contentType) {
+    return DIMENSIONABLE_MIME_TYPES.contains(contentType);
   }
 
   public long getContentLength(String path, String userId) {
@@ -708,11 +752,6 @@ public class XythosRemoteImpl implements XythosRemote {
       return false;
     }
     return true;
-  }
-
-  public InputStream getFileContentStream(String arg0, String arg1) {
-    // TODO Auto-generated method stub
-    return null;
   }
 
 }
