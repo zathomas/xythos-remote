@@ -401,7 +401,6 @@ public class XythosRemoteImpl implements XythosRemote {
       if (fileHasDimensions(contentType)) {
         readFileDimensionsIntoProperties(output, props);
       }
-      readFileDimensionsIntoProperties(output, props);
 
       props
           .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
@@ -544,6 +543,15 @@ public class XythosRemoteImpl implements XythosRemote {
           entry.put("contentType", e.getFileContentType());
           entry.put("contentLength", e.getEntrySize());
           Map<String, Object> props = new HashMap<String, Object>();
+          if (fileHasDimensions(e.getFileContentType())) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            ((File) e).getFileContent(output);
+            try {
+              readFileDimensionsIntoProperties(output, props);
+            } catch (Exception e1) {
+              e1.printStackTrace();
+            }
+          }
           props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
           props.put("lastmodified", dateFormat.format(e.getLastUpdateTimestamp()));
           entry.put("properties", props);
