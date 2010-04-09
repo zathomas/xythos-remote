@@ -58,9 +58,14 @@ import com.xythos.storageServer.permissions.api.AccessControlEntry;
 import com.xythos.webdav.dasl.api.DaslResultSet;
 import com.xythos.webdav.dasl.api.DaslStatement;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 import edu.nyu.XythosRemote;
 
 public class XythosRemoteImpl implements XythosRemote {
+  
+  private static Log log = LogFactory.getLog(XythosRemoteImpl.class);
 
   private static String ADMIN = "administrator";
   
@@ -87,6 +92,38 @@ public class XythosRemoteImpl implements XythosRemote {
         context.rollbackContext();
         context = null;
       }
+    }
+  }
+  
+  private void createUserHomeDirectory(String userId) {
+    try {
+      Context context = null;
+      String homeDirectoryPath = "/" + userId;
+      try {
+        VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+        context = getUserContext(userId, defaultVirtualServer.getName());
+        String ownerPrincipalID = context.getContextUser().getPrincipalID();
+        String documentStoreName = Parameters.getNewUserDocumentStore();
+
+        CreateTopLevelDirectoryData directoryData = new CreateTopLevelDirectoryData(defaultVirtualServer,
+            homeDirectoryPath,
+            documentStoreName,
+            ownerPrincipalID);
+
+        FileSystem.createTopLevelDirectory(directoryData, context);
+
+        context.getContextUser().setHomeDirectory(homeDirectoryPath, defaultVirtualServer);
+
+        context.commitContext();
+        context = null;
+      } finally {
+        if (context != null) {
+          context.rollbackContext();
+          context = null;
+        }
+      }
+    } catch (XythosException e) {
+      e.printStackTrace();
     }
   }
 
@@ -272,6 +309,12 @@ public class XythosRemoteImpl implements XythosRemote {
         session.getWorkspace().getNamespaceRegistry().registerNamespace("sling",
             "http://sling.apache.org/jcr/sling/1.0");
         Node fileNode = null;
+        
+        // check for their home directory first.
+        if(!session.itemExists("/" + userId)) {
+          log.info("Home directory didn't exist saving file " + path + ". Creating home directory.");
+          createUserHomeDirectory(userId);
+        }
 
         // Create or get the file.
         if (!session.itemExists(path)) {
@@ -398,9 +441,9 @@ public class XythosRemoteImpl implements XythosRemote {
       entry.put("contentType", contentType);
       entry.put("contentLength", contentLength);
       Map<String, Object> props = new HashMap<String, Object>();
-      if (fileHasDimensions(contentType)) {
-        readFileDimensionsIntoProperties(output, props);
-      }
+//      if (fileHasDimensions(contentType)) {
+//        readFileDimensionsIntoProperties(output, props);
+//      }
 
       props
           .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
@@ -529,6 +572,14 @@ public class XythosRemoteImpl implements XythosRemote {
           + "</d:searchrequest>";
       VirtualServer server = VirtualServer.getDefaultVirtualServer();
       Context ctx = getUserContext(userId, server.getName());
+      // if home directory doesn't exist, create it
+      FileSystemEntry homeDirectory = FileSystem.getEntry(server, "/"+userId, false, ctx);
+      if ((homeDirectory == null) || !(homeDirectory instanceof FileSystemDirectory)) {
+        log.info("During search of /" + userId + ", directory didn't exist, so creating it.");
+        createUserHomeDirectory(userId);
+        // search results will necessarily be empty because we have newly created the home dir
+        return rv;
+      }
       DaslStatement statement = new DaslStatement(dasl, ctx, true);
       DaslResultSet result = statement.executeDaslQuery();
       while (result.nextEntry()) {
@@ -543,15 +594,15 @@ public class XythosRemoteImpl implements XythosRemote {
           entry.put("contentType", e.getFileContentType());
           entry.put("contentLength", e.getEntrySize());
           Map<String, Object> props = new HashMap<String, Object>();
-          if (fileHasDimensions(e.getFileContentType())) {
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            ((File) e).getFileContent(output);
-            try {
-              readFileDimensionsIntoProperties(output, props);
-            } catch (Exception e1) {
-              e1.printStackTrace();
-            }
-          }
+//          if (fileHasDimensions(e.getFileContentType())) {
+//            ByteArrayOutputStream output = new ByteArrayOutputStream();
+//            ((File) e).getFileContent(output);
+//            try {
+//              readFileDimensionsIntoProperties(output, props);
+//            } catch (Exception e1) {
+//              e1.printStackTrace();
+//            }
+//          }
           props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
           props.put("lastmodified", dateFormat.format(e.getLastUpdateTimestamp()));
           entry.put("properties", props);
