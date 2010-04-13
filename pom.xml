@@ -54,19 +54,42 @@
 	<dependency>
 	  <groupId>org.springframework</groupId>
 	  <artifactId>spring-webmvc</artifactId>
-	  <version>3.0.0.RELEASE</version>
+	  <version>3.0.2.RELEASE</version>
+	  <exclusions>
+         <exclusion>
+            <groupId>commons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+         </exclusion>
+      </exclusions>
 	</dependency>
 	<dependency>
 	  <groupId>org.springframework</groupId>
 	  <artifactId>spring-aop</artifactId>
-	  <version>3.0.0.RELEASE</version>
+	  <version>3.0.2.RELEASE</version>
 	</dependency>
 	<dependency>
 	  <groupId>org.springframework</groupId>
 	  <artifactId>spring-test</artifactId>
-	  <version>3.0.0.RELEASE</version>
+	  <version>3.0.2.RELEASE</version>
 	  <scope>test</scope>
 	</dependency>
+	<dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>jcl-over-slf4j</artifactId>
+      <version>1.5.8</version>
+   </dependency>
+	<dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-core</artifactId>
+      <version>0.9.9</version>
+      <scope>runtime</scope>
+   </dependency>
+	<dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>0.9.9</version>
+      <scope>runtime</scope>
+   </dependency>
 	<dependency>
 	  <groupId>com.caucho</groupId>
 	  <artifactId>hessian</artifactId>

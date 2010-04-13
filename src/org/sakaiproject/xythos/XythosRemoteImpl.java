@@ -58,14 +58,14 @@ import com.xythos.storageServer.permissions.api.AccessControlEntry;
 import com.xythos.webdav.dasl.api.DaslResultSet;
 import com.xythos.webdav.dasl.api.DaslStatement;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.nyu.XythosRemote;
 
 public class XythosRemoteImpl implements XythosRemote {
   
-  private static Log log = LogFactory.getLog(XythosRemoteImpl.class);
+  Logger log = LoggerFactory.getLogger(XythosRemoteImpl.class);
 
   private static String ADMIN = "administrator";
   
@@ -428,6 +428,10 @@ public class XythosRemoteImpl implements XythosRemote {
 
   public Map<String, Object> getDocument(String path, String userId) {
     try {
+      if (log.isDebugEnabled()) log.debug("getDocument called with path: " + path);
+      if (path.startsWith("/thumbs/")) {
+        return getThumbnailDocument(path, userId);
+      }
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
       
       File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
@@ -455,6 +459,74 @@ public class XythosRemoteImpl implements XythosRemote {
       return null;
     }
 
+  }
+
+  private Map<String, Object> getThumbnailDocument(String path, String userId) throws Exception {
+    try {
+      if (log.isDebugEnabled()) log.debug("getThumbnailDocument called with path " + path);
+      Context adminContext = null;
+      try {
+        VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+        adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
+        FileSystemFile file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false, adminContext);
+        if (file == null) {
+          if (log.isDebugEnabled()) log.debug("thumbnail not found for path " + path + " so creating new thumbnail.");
+          // first request for this thumbnail
+          // get the original file
+          String originalPath = path.replaceFirst("/thumbs", "");
+          if (log.isDebugEnabled()) log.debug("retrieving original file for thumbnail: " + originalPath);
+          File originalFile = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(originalPath, "utf-8"), false, adminContext);
+          if (originalFile != null) {
+            if (log.isDebugEnabled()) log.debug("retrieved " + originalFile.getEntrySize() + " bytes of original file for thumbnail.");
+          }
+          String parent = URLDecoder.decode(path.substring(0,path.lastIndexOf("/")), "utf-8");
+          String name = URLDecoder.decode(path.substring(path.lastIndexOf("/")+1), "utf-8");
+          ByteArrayOutputStream original = new ByteArrayOutputStream();
+          originalFile.getFileContent(original);
+          ByteArrayOutputStream thumbnail = new ByteArrayOutputStream();
+          if (log.isDebugEnabled()) log.debug("attempting to use ThumbnailGenerator");
+          ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), 46, 46, thumbnail);
+          if (log.isDebugEnabled()) log.debug("ThumbnailGenerator produced image of size " + thumbnail.size());
+          FileSystemEntry parentDirectory = FileSystem.getEntry(defaultVirtualServer, parent, false, adminContext);
+          if (parentDirectory == null) {
+            if (log.isDebugEnabled()) log.debug("parent directory doesn't exist. Will create it. " + parent);
+            String parentDirectoryName = parent.replaceFirst("/thumbs/", "");
+            CreateDirectoryData directoryData = new CreateDirectoryData(defaultVirtualServer, "/thumbs", parentDirectoryName, adminContext.getContextUser().getPrincipalID());
+            FileSystem.createDirectory(directoryData, adminContext);
+          }
+          if (log.isDebugEnabled()) log.debug("attempting to create new file called " + name + " located at " + parent);
+          CreateFileData createFileData = new CreateFileData(defaultVirtualServer, parent, name, "image/jpeg", adminContext.getContextUser().getPrincipalID(),new ByteArrayInputStream(thumbnail.toByteArray()));
+          try {
+            file = FileSystem.createFile(createFileData, adminContext);
+          } catch (Exception e) {
+            if (log.isDebugEnabled()) log.debug("failed to create a new file. Exception is " + e.getClass().getCanonicalName());
+            return null;
+          }
+          adminContext.commitContext();
+          if (log.isDebugEnabled()) log.debug("context committed for thumbnail create operation");
+        }
+        adminContext = null;
+        Map<String, Object> entry = new HashMap<String, Object>();
+        entry.put("documentContent", null);
+        entry.put("contentType", "image/jpeg");
+        entry.put("contentLength", file.getEntrySize());
+        Map<String, Object> props = new HashMap<String, Object>();
+        props
+            .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
+        props.put("lastmodified", dateFormat.format(file.getLastUpdateTimestamp()));
+        entry.put("properties", props);
+        entry.put("uri", file.getName());
+        return entry;
+      } finally {
+        if (adminContext != null) {
+          if (log.isDebugEnabled()) log.debug("failed to create a thumbnail image. rolling back context.");
+          adminContext.rollbackContext();
+          adminContext = null;
+        }
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private void readFileDimensionsIntoProperties(ByteArrayOutputStream output,
@@ -515,6 +587,10 @@ public class XythosRemoteImpl implements XythosRemote {
 
   public byte[] getFileContent(String path, String userId) {
     try {
+      if (path.startsWith("/thumbs/")) {
+        if (log.isDebugEnabled()) log.debug("the contents of a thumbnail have been requested: " + path);
+        return getImageThumb(path, userId);
+      }
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
       File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
           getUserContext(userId, defaultVirtualServer.getName()));
@@ -523,6 +599,68 @@ public class XythosRemoteImpl implements XythosRemote {
       return output.toByteArray();
     } catch (Exception e) {
       return null;
+    }
+  }
+  
+  private byte[] getImageThumb(String path, String userId) {
+    try {
+      String thumbnailPath = path;
+      if (! path.startsWith("/thumbs/")) {
+        thumbnailPath = "/thumbs" + path;
+      } else {
+        path = path.replaceFirst("/thumbs", "");
+      }
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      // first get the original
+      if (log.isDebugEnabled()) log.debug("retrieving the original for this thumbnail: " + path);
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
+          getUserContext(userId, defaultVirtualServer.getName()));
+      if (file == null) {
+        if (log.isDebugEnabled()) log.debug("original file not found: " + path);
+        return null;
+      } else {
+        ByteArrayOutputStream rv = new ByteArrayOutputStream();
+        // look for a thumbnail
+        File thumbFile = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(thumbnailPath, "utf-8"), false,
+            AdminUtil.getContextForAdmin("127.0.0.1"));
+        if (thumbFile == null) {
+          Context adminContext = null;
+          try {
+            // thumbnail does not exist, generate one
+            adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
+            String parent = thumbnailPath.substring(0,thumbnailPath.lastIndexOf("/"));
+            String name = thumbnailPath.substring(thumbnailPath.lastIndexOf("/")+1);
+            ByteArrayOutputStream original = new ByteArrayOutputStream();
+            file.getFileContent(original);
+            ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), 46, 46, rv);
+            FileSystemEntry parentDirectory = FileSystem.getEntry(defaultVirtualServer, parent, false, adminContext);
+            if (parentDirectory == null) {
+              if (log.isDebugEnabled()) log.debug("parent directory doesn't exist. Will create it. " + parent);
+              String parentDirectoryName = parent.replaceFirst("/thumbs/", "");
+              CreateDirectoryData directoryData = new CreateDirectoryData(defaultVirtualServer, "/thumbs", parentDirectoryName, adminContext.getContextUser().getPrincipalID());
+              FileSystem.createDirectory(directoryData, adminContext);
+            }
+            CreateFileData createFileData = new CreateFileData(defaultVirtualServer, parent, name, "image/jpeg", adminContext.getContextUser().getPrincipalID(),new ByteArrayInputStream(rv.toByteArray()));
+            FileSystem.createFile(createFileData, adminContext);
+            adminContext.commitContext();
+            if (log.isDebugEnabled()) log.debug("getImageThumb successfully created new thumbnail " + parent + "/" + name);
+            adminContext = null;
+          } finally {
+            if (adminContext != null) {
+              adminContext.rollbackContext();
+              adminContext = null;
+            }
+          }
+        } else {
+          if (log.isDebugEnabled()) log.debug("thumbnail image successfully retrieved from " + thumbnailPath);
+          // thumbnail already exists, use it
+          thumbFile.getFileContent(rv);
+        }
+        return rv.toByteArray();
+      }
+    } catch (Exception e) {
+      if (log.isDebugEnabled()) log.debug("getImageThumb exception " + e.getClass().getCanonicalName());
+      throw new RuntimeException(e);
     }
   }
 
