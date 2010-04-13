@@ -1,5 +1,6 @@
 package org.sakaiproject.xythos;
 
+import java.awt.Image;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
@@ -68,8 +69,11 @@ public class XythosRemoteImpl implements XythosRemote {
   Logger log = LoggerFactory.getLogger(XythosRemoteImpl.class);
 
   private static String ADMIN = "administrator";
-  
-  private static final List<String> DIMENSIONABLE_MIME_TYPES = Arrays.asList(new String[] {"image/jpeg","image/png","image/gif","image/tiff","image/bmp"});
+  private static final List<String> DIMENSIONABLE_MIME_TYPES = Arrays.asList(new String[] {"image/jpeg","image/jpg","image/png","image/gif","image/tiff","image/bmp"});
+
+  private static final int MAX_THUMB_HEIGHT = 150;
+
+  private static final int MAX_THUMB_WIDTH = 150;
   
   private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
@@ -445,9 +449,10 @@ public class XythosRemoteImpl implements XythosRemote {
       entry.put("contentType", contentType);
       entry.put("contentLength", contentLength);
       Map<String, Object> props = new HashMap<String, Object>();
-//      if (fileHasDimensions(contentType)) {
-//        readFileDimensionsIntoProperties(output, props);
-//      }
+      if (fileHasDimensions(contentType)) {
+        props.put("thumbnailUri", "/thumbs" + file.getName());
+        readFileDimensionsIntoProperties(output.toByteArray(), props);
+      }
 
       props
           .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
@@ -485,15 +490,9 @@ public class XythosRemoteImpl implements XythosRemote {
           originalFile.getFileContent(original);
           ByteArrayOutputStream thumbnail = new ByteArrayOutputStream();
           if (log.isDebugEnabled()) log.debug("attempting to use ThumbnailGenerator");
-          ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), 46, 46, thumbnail);
+          ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT, thumbnail);
           if (log.isDebugEnabled()) log.debug("ThumbnailGenerator produced image of size " + thumbnail.size());
-          FileSystemEntry parentDirectory = FileSystem.getEntry(defaultVirtualServer, parent, false, adminContext);
-          if (parentDirectory == null) {
-            if (log.isDebugEnabled()) log.debug("parent directory doesn't exist. Will create it. " + parent);
-            String parentDirectoryName = parent.replaceFirst("/thumbs/", "");
-            CreateDirectoryData directoryData = new CreateDirectoryData(defaultVirtualServer, "/thumbs", parentDirectoryName, adminContext.getContextUser().getPrincipalID());
-            FileSystem.createDirectory(directoryData, adminContext);
-          }
+          createDirectoriesAlongPath(parent);
           if (log.isDebugEnabled()) log.debug("attempting to create new file called " + name + " located at " + parent);
           CreateFileData createFileData = new CreateFileData(defaultVirtualServer, parent, name, "image/jpeg", adminContext.getContextUser().getPrincipalID(),new ByteArrayInputStream(thumbnail.toByteArray()));
           try {
@@ -529,26 +528,18 @@ public class XythosRemoteImpl implements XythosRemote {
     }
   }
 
-  private void readFileDimensionsIntoProperties(ByteArrayOutputStream output,
+  private void readFileDimensionsIntoProperties(byte[] fileData,
       Map<String, Object> props) throws IOException, InterruptedException,
       IM4JavaException {
-    ProcessStarter.setGlobalSearchPath("/opt/local/bin");
-    IdentifyCmd cmd = new IdentifyCmd();
-    Pipe pipeIn = new Pipe(new ByteArrayInputStream(output.toByteArray()), null);
-    ArrayListOutputConsumer pipeOut = new ArrayListOutputConsumer();
-    cmd.setInputProvider(pipeIn);
-    // create the operation, add images and operators/options
-    IMOperation op = new IMOperation();
-    op.format("%[fx:w]\\n%[fx:h]");
-    op.addImage("-");
- 
-    cmd.run(op);
-    
-    List<String> imageMagickOutput = pipeOut.getOutput();
-    if (imageMagickOutput.size() == 2) {
-      props.put("width", imageMagickOutput.get(0));
-      props.put("height", imageMagickOutput.get(1));
-    }
+    ByteArrayInputStream input = new ByteArrayInputStream(fileData);
+    Image image = javax.imageio.ImageIO.read(input);
+    int imageHeight = image.getHeight(null);
+    int imageWidth = image.getWidth(null);
+    int[] thumbDims = ThumbnailGenerator.getThumbnailDimensions(imageWidth, imageHeight, MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT);
+    props.put("thumbWidth", thumbDims[0]);
+    props.put("thumbHeight", thumbDims[1]);
+    props.put("width", image.getWidth(null));
+    props.put("height", image.getHeight(null));
   }
 
   private boolean fileHasDimensions(String contentType) {
@@ -632,14 +623,8 @@ public class XythosRemoteImpl implements XythosRemote {
             String name = thumbnailPath.substring(thumbnailPath.lastIndexOf("/")+1);
             ByteArrayOutputStream original = new ByteArrayOutputStream();
             file.getFileContent(original);
-            ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), 46, 46, rv);
-            FileSystemEntry parentDirectory = FileSystem.getEntry(defaultVirtualServer, parent, false, adminContext);
-            if (parentDirectory == null) {
-              if (log.isDebugEnabled()) log.debug("parent directory doesn't exist. Will create it. " + parent);
-              String parentDirectoryName = parent.replaceFirst("/thumbs/", "");
-              CreateDirectoryData directoryData = new CreateDirectoryData(defaultVirtualServer, "/thumbs", parentDirectoryName, adminContext.getContextUser().getPrincipalID());
-              FileSystem.createDirectory(directoryData, adminContext);
-            }
+            ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT, rv);
+            createDirectoriesAlongPath(parent);
             CreateFileData createFileData = new CreateFileData(defaultVirtualServer, parent, name, "image/jpeg", adminContext.getContextUser().getPrincipalID(),new ByteArrayInputStream(rv.toByteArray()));
             FileSystem.createFile(createFileData, adminContext);
             adminContext.commitContext();
@@ -661,6 +646,45 @@ public class XythosRemoteImpl implements XythosRemote {
     } catch (Exception e) {
       if (log.isDebugEnabled()) log.debug("getImageThumb exception " + e.getClass().getCanonicalName());
       throw new RuntimeException(e);
+    }
+  }
+  
+  private void createDirectoriesAlongPath(String path) {
+    if (log.isDebugEnabled()) log.debug("createDirectoriesAlongPath called for path: " + path);
+    try {
+      Context adminContext = null;
+      try {
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
+      // if the whole path exists already, we don't need to do anything
+      if (FileSystem.getEntry(defaultVirtualServer, path, false, adminContext) != null) return;
+      
+      String[] pathSegments = path.split("/");
+      StringBuffer existingPath = new StringBuffer();
+      existingPath.append("/");
+      FileSystemEntry directory = null;
+      for (String pathSegment : pathSegments) {
+        if ("".equals(pathSegment)) continue;
+        existingPath.append(pathSegment);
+        directory = FileSystem.getEntry(defaultVirtualServer, existingPath.toString(), false, adminContext);
+        if (directory == null) {
+          if (log.isDebugEnabled()) log.debug("path doesn't exist, creating it: " + existingPath.toString());
+          String parent = existingPath.toString().substring(0, existingPath.toString().lastIndexOf("/"));
+          CreateDirectoryData directoryData = new CreateDirectoryData(defaultVirtualServer, parent, pathSegment, adminContext.getContextUser().getPrincipalID());
+          FileSystem.createDirectory(directoryData, adminContext);
+        }
+        existingPath.append("/");
+      }
+      adminContext.commitContext();
+      adminContext = null;
+      }finally {
+        if (adminContext != null) {
+          adminContext.rollbackContext();
+          adminContext = null;
+        }
+      }
+    } catch (Exception e) {
+      log.error("createDirectoriesAlongPath exception: " + e.getMessage());
     }
   }
 
@@ -732,15 +756,12 @@ public class XythosRemoteImpl implements XythosRemote {
           entry.put("contentType", e.getFileContentType());
           entry.put("contentLength", e.getEntrySize());
           Map<String, Object> props = new HashMap<String, Object>();
-//          if (fileHasDimensions(e.getFileContentType())) {
-//            ByteArrayOutputStream output = new ByteArrayOutputStream();
-//            ((File) e).getFileContent(output);
-//            try {
-//              readFileDimensionsIntoProperties(output, props);
-//            } catch (Exception e1) {
-//              e1.printStackTrace();
-//            }
-//          }
+          if (fileHasDimensions(e.getFileContentType())) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ((File)e).getFileContent(out);
+            props.put("thumbnailUri", "/thumbs" + e.getName());
+            readFileDimensionsIntoProperties(out.toByteArray(), props);
+          }
           props.put("filename", e.getName().substring(e.getName().lastIndexOf("/") + 1));
           props.put("lastmodified", dateFormat.format(e.getLastUpdateTimestamp()));
           entry.put("properties", props);
@@ -749,7 +770,7 @@ public class XythosRemoteImpl implements XythosRemote {
         }
       }
       return rv;
-    } catch (XythosException e) {
+    } catch (Exception e) {
       e.printStackTrace();
       return null;
     }
