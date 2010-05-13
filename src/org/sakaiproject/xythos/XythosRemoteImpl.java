@@ -3,53 +3,30 @@ package org.sakaiproject.xythos;
 import java.awt.Image;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import javax.jcr.AccessDeniedException;
-import javax.jcr.InvalidItemStateException;
-import javax.jcr.ItemExistsException;
-import javax.jcr.LoginException;
 import javax.jcr.Node;
-import javax.jcr.PathNotFoundException;
 import javax.jcr.Repository;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
 import javax.jcr.ValueFormatException;
 import javax.jcr.lock.LockException;
 import javax.jcr.nodetype.ConstraintViolationException;
-import javax.jcr.nodetype.NoSuchNodeTypeException;
-import javax.jcr.query.InvalidQueryException;
-import javax.jcr.query.Query;
-import javax.jcr.query.QueryManager;
-import javax.jcr.query.QueryResult;
 import javax.jcr.version.VersionException;
 
-import org.im4java.core.ConvertCmd;
 import org.im4java.core.IM4JavaException;
-import org.im4java.core.IMOperation;
-import org.im4java.core.IdentifyCmd;
-import org.im4java.process.ArrayListOutputConsumer;
-import org.im4java.process.Pipe;
-import org.im4java.process.ProcessStarter;
 
 import com.xythos.common.api.*;
 import com.xythos.fileSystem.File;
-import com.xythos.jcr.api.AdminCredentials;
 import com.xythos.jcr.api.NoPasswordCredentials;
 import com.xythos.jcr.api.RepositoryFactory;
 import com.xythos.security.api.*;
@@ -76,10 +53,6 @@ public class XythosRemoteImpl implements XythosRemote {
   private static final int MAX_THUMB_WIDTH = 150;
   
   private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-
-  public boolean ping() {
-    return true;
-  }
 
   private void addBookmark(String userId, String path, String displayName)
       throws XythosException {
@@ -136,7 +109,12 @@ public class XythosRemoteImpl implements XythosRemote {
     try {
       Context l_context = null;
       try {
-        VirtualServer l_virtualserver = VirtualServer.find(l_vsName);
+        VirtualServer l_virtualserver;
+        if (l_vsName != null) {
+          l_virtualserver = VirtualServer.find(l_vsName);
+        } else {
+          l_virtualserver = VirtualServer.getDefaultVirtualServer();
+        }
         l_context = getUserContext(l_username, l_vsName);
         String l_ownerPrincipalID = l_context.getContextUser().getPrincipalID();
 
@@ -182,252 +160,6 @@ public class XythosRemoteImpl implements XythosRemote {
     l_context = ContextFactory.create(l_user, l_prop);
 
     return l_context;
-  }
-
-  public String findAllFilesForUser(String l_username) {
-    List<String> permittedFiles = new ArrayList<String>();
-    try {
-      Context l_context = null;
-      l_context = AdminUtil.getContextForAdmin("1.1.1.1");
-      VirtualServer vServer = VirtualServer.getDefaultVirtualServer();
-      UserBase l_principal = PrincipalManager.findUser(l_username, vServer.getName());
-      String[] topLevelDirectories = FileSystem.findTopLevelDirectoryEntries(vServer,
-          l_context);
-      for (String dirName : topLevelDirectories) {
-        FileSystemTopLevelDirectory topDir = FileSystem.findTopLevelDirectoryEntry(
-            vServer, dirName, l_context);
-        FileSystemDirectory dir = topDir.getFileSystemDirectory(false, l_context);
-        permittedFiles.addAll(permittedFilesForEntry(l_principal.getPrincipalID(), dir));
-      }
-      StringBuffer fileList = new StringBuffer();
-      for (String filename : permittedFiles) {
-        fileList.append(filename + ", ");
-      }
-      return fileList.toString();
-    } catch (XythosException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-      return "error";
-    }
-  }
-
-  public Collection<Map<String, String>> findFilesWithXPath(String searchQuery,
-      String userId) {
-    Collection<Map<String, String>> rv = new ArrayList<Map<String, String>>();
-    try {
-      Repository repository = RepositoryFactory.newRepository(null);
-      Session session = repository.login(new NoPasswordCredentials(userId));
-      session.getWorkspace().getNamespaceRegistry().registerNamespace(
-          JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
-      session.getWorkspace().getNamespaceRegistry().registerNamespace("sling",
-          "http://sling.apache.org/jcr/sling/1.0");
-      QueryManager queryManager = session.getWorkspace().getQueryManager();
-      Query query = queryManager.createQuery(searchQuery, Query.XPATH);
-      Map<String, String> rowMap = null;
-      QueryResult result = query.execute();
-      for (Iterator<?> i = result.getNodes(); i.hasNext();) {
-        rowMap = new HashMap<String, String>();
-        Node node = (Node) i.next();
-        for (Iterator<?> j = node.getProperties(); j.hasNext();) {
-          javax.jcr.Property prop = (javax.jcr.Property) j.next();
-          if (!prop.getDefinition().isMultiple()) {
-            rowMap.put(prop.getName(), prop.getValue().getString());
-          }
-        }
-        rowMap.put("jcr:path", node.getPath());
-        rv.add(rowMap);
-      }
-      return rv;
-    } catch (LoginException e) {
-      e.printStackTrace();
-      return null;
-    } catch (InvalidQueryException e) {
-      e.printStackTrace();
-      return null;
-    } catch (RepositoryException e) {
-      e.printStackTrace();
-      return null;
-    }
-  }
-
-  private List<String> permittedFilesForEntry(String l_username, FileSystemEntry entry) {
-    List<String> rv = new ArrayList<String>();
-    try {
-      if (userCanRead(l_username, entry)) {
-        rv.add(entry.getName());
-      }
-      if (entry instanceof FileSystemDirectory) {
-        FileSystemEntry[] contents = ((FileSystemDirectory) entry).getFindableEntries();
-        for (FileSystemEntry child : contents) {
-          rv.addAll(permittedFilesForEntry(l_username, child));
-        }
-      }
-    } catch (XythosException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-    }
-    return rv;
-
-  }
-
-  private boolean userCanRead(String userPrincipalId, FileSystemEntry entry) {
-    try {
-      if (entry.getEntryOwnerPrincipalID().equalsIgnoreCase(userPrincipalId))
-        return true;
-      List<String> searchPrincipals = new ArrayList<String>();
-      searchPrincipals.add(userPrincipalId);
-      GroupArray globalGroups = PrincipalManager.searchForGroups("*", "*", "*",
-          PrincipalManager.PRINCIPAL_SEARCH_UNLIMITED_RESULTS, null);
-      for (Group g : globalGroups.getGroups()) {
-        if (g.getMembers() != null) {
-          for (Principal p : g.getMembers()) {
-            if (p.getPrincipalID().equalsIgnoreCase(userPrincipalId))
-              searchPrincipals.add(g.getPrincipalID());
-          }
-        }
-      }
-      for (String principalId : searchPrincipals) {
-        AccessControlEntry ace = entry.getAccessControlEntry(principalId);
-        if (ace.isReadable())
-          return true;
-      }
-      return false;
-    } catch (XythosException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-      return false;
-    }
-  }
-
-  public String saveFile(String path, String id, byte[] contentBytes, String fileName,
-      String contentType, String userId) {
-    if (fileName != null && !fileName.equals("")) {
-      // Clean the filename.
-      Repository repository;
-      try {
-        repository = RepositoryFactory.newRepository(null);
-        Session session = null;
-        session = repository.login(new NoPasswordCredentials(userId));
-        session.getWorkspace().getNamespaceRegistry().registerNamespace(
-            JcrConstants.NS_SAKAIH_PREFIX, JcrConstants.NS_SAKAIH_URI);
-        session.getWorkspace().getNamespaceRegistry().registerNamespace("sling",
-            "http://sling.apache.org/jcr/sling/1.0");
-        Node fileNode = null;
-        
-        // check for their home directory first.
-        if(!session.itemExists("/" + userId)) {
-          log.info("Home directory didn't exist saving file " + path + ". Creating home directory.");
-          createUserHomeDirectory(userId);
-        }
-
-        // Create or get the file.
-        if (!session.itemExists(path)) {
-          // create the node administratively, and set permissions
-          Session adminSession = null;
-          try {
-            adminSession = repository.login(new AdminCredentials("test"));
-
-            fileNode = JcrUtils.deepGetOrCreateNode(adminSession, path,
-                JcrConstants.NT_FILE);
-            Node content = null;
-            if (fileNode.canAddMixin(JcrConstants.MIX_REFERENCEABLE)) {
-              fileNode.addMixin(JcrConstants.MIX_REFERENCEABLE);
-            }
-            // fileNode.addMixin("sakai:propertiesmix");
-            fileNode.setProperty("sling:resourceType", "sakai/file");
-            fileNode.setProperty("sakai:id", id);
-
-            // Create the content node.
-            content = fileNode
-                .addNode(JcrConstants.JCR_CONTENT, JcrConstants.NT_RESOURCE);
-            content.setProperty(JcrConstants.JCR_DATA, new ByteArrayInputStream(
-                contentBytes));
-            content.setProperty(JcrConstants.JCR_MIMETYPE, contentType);
-            content.setProperty(JcrConstants.JCR_LASTMODIFIED, Calendar.getInstance());
-            // Set the person who last modified it.s
-            fileNode.setProperty("sakai:user", userId);
-
-            fileNode.setProperty("sakai:filename", fileName);
-            if (adminSession.hasPendingChanges()) {
-              adminSession.save();
-            }
-          } catch (Exception e) {
-            // woah, what happened here?
-            e.printStackTrace();
-          } finally {
-            adminSession.logout();
-          }
-          // Node rv = (Node) session.getItem(path);
-          return "http://localhost:9090" + path;
-        } else {
-          fileNode = (Node) session.getItem(path);
-          // This is not a new node, so we should already have a content node.
-          // Just in case.. catch it
-          Node content = null;
-          try {
-            content = fileNode.getNode(JcrConstants.JCR_CONTENT);
-          } catch (PathNotFoundException pnfe) {
-            content = fileNode
-                .addNode(JcrConstants.JCR_CONTENT, JcrConstants.NT_RESOURCE);
-          }
-
-          content.setProperty(JcrConstants.JCR_DATA, new ByteArrayInputStream(
-              contentBytes));
-          content.setProperty(JcrConstants.JCR_MIMETYPE, contentType);
-          content.setProperty(JcrConstants.JCR_LASTMODIFIED, Calendar.getInstance());
-          // Set the person who last modified it.
-          // fileNode.setProperty("sakai:user", session.getUserID());
-
-          // fileNode.setProperty("sakai:filename", fileName);
-          if (session.hasPendingChanges()) {
-            session.save();
-          }
-          return "http://localhost:9090" + path;
-        }
-      } catch (LoginException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (NoSuchNodeTypeException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (VersionException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (ConstraintViolationException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (LockException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (ValueFormatException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (ItemExistsException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (PathNotFoundException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (AccessDeniedException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (InvalidItemStateException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (RepositoryException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      }
-    }
-    return null;
-  }
-
-  public Map<String, String> getProperties() {
-    Map<String, String> rv = new HashMap<String, String>();
-    rv.put("name", "Zachary");
-    rv.put("rank", "lt. colonel");
-    rv.put("serial", "464917732");
-    return rv;
   }
 
   public Map<String, Object> getDocument(String path, String userId) {
@@ -556,98 +288,6 @@ public class XythosRemoteImpl implements XythosRemote {
       return 0;
     }
   }
-
-  public String getContentType(String path, String userId) {
-    try {
-      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File) FileSystem.getEntry(defaultVirtualServer, path, false,
-          getUserContext(userId, defaultVirtualServer.getName()));
-      return file.getFileContentType();
-    } catch (Exception e) {
-      return null;
-    }
-  }
-
-  public String getContentUri(String path, String userId) {
-    try {
-      return path;
-    } catch (Exception e) {
-      return null;
-    }
-  }
-
-  public byte[] getFileContent(String path, String userId) {
-    try {
-      if (path.startsWith("/thumbs/")) {
-        if (log.isDebugEnabled()) log.debug("the contents of a thumbnail have been requested: " + path);
-        return getImageThumb(path, userId);
-      }
-      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
-          getUserContext(userId, defaultVirtualServer.getName()));
-      ByteArrayOutputStream output = new ByteArrayOutputStream();
-      file.getFileContent(output);
-      return output.toByteArray();
-    } catch (Exception e) {
-      return null;
-    }
-  }
-  
-  private byte[] getImageThumb(String path, String userId) {
-    try {
-      String thumbnailPath = path;
-      if (! path.startsWith("/thumbs/")) {
-        thumbnailPath = "/thumbs" + path;
-      } else {
-        path = path.replaceFirst("/thumbs", "");
-      }
-      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      // first get the original
-      if (log.isDebugEnabled()) log.debug("retrieving the original for this thumbnail: " + path);
-      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
-          getUserContext(userId, defaultVirtualServer.getName()));
-      if (file == null) {
-        if (log.isDebugEnabled()) log.debug("original file not found: " + path);
-        return null;
-      } else {
-        ByteArrayOutputStream rv = new ByteArrayOutputStream();
-        // look for a thumbnail
-        File thumbFile = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(thumbnailPath, "utf-8"), false,
-            AdminUtil.getContextForAdmin("127.0.0.1"));
-        if (thumbFile == null) {
-          Context adminContext = null;
-          try {
-            // thumbnail does not exist, generate one
-            adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
-            String parent = thumbnailPath.substring(0,thumbnailPath.lastIndexOf("/"));
-            String name = thumbnailPath.substring(thumbnailPath.lastIndexOf("/")+1);
-            ByteArrayOutputStream original = new ByteArrayOutputStream();
-            file.getFileContent(original);
-            ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT, rv);
-            createDirectoriesAlongPath(parent);
-            CreateFileData createFileData = new CreateFileData(defaultVirtualServer, parent, name, "image/jpeg", adminContext.getContextUser().getPrincipalID(),new ByteArrayInputStream(rv.toByteArray()));
-            FileSystem.createFile(createFileData, adminContext);
-            adminContext.commitContext();
-            if (log.isDebugEnabled()) log.debug("getImageThumb successfully created new thumbnail " + parent + "/" + name);
-            adminContext = null;
-          } finally {
-            if (adminContext != null) {
-              adminContext.rollbackContext();
-              adminContext = null;
-            }
-          }
-        } else {
-          if (log.isDebugEnabled()) log.debug("thumbnail image successfully retrieved from " + thumbnailPath);
-          // thumbnail already exists, use it
-          thumbFile.getFileContent(rv);
-        }
-        return rv.toByteArray();
-      }
-    } catch (Exception e) {
-      if (log.isDebugEnabled()) log.debug("getImageThumb exception " + e.getClass().getCanonicalName());
-      throw new RuntimeException(e);
-    }
-  }
   
   private void createDirectoriesAlongPath(String path) {
     if (log.isDebugEnabled()) log.debug("createDirectoriesAlongPath called for path: " + path);
@@ -685,24 +325,6 @@ public class XythosRemoteImpl implements XythosRemote {
       }
     } catch (Exception e) {
       log.error("createDirectoriesAlongPath exception: " + e.getMessage());
-    }
-  }
-
-  public Map<String, Object> getFileProperties(String path, String userId) {
-    Map<String, Object> rv = new HashMap<String, Object>();
-    try {
-      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      FileSystemFile file = (FileSystemFile) FileSystem.getEntry(defaultVirtualServer,
-          path, false, getUserContext(userId, defaultVirtualServer.getName()));
-      rv.put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
-      com.xythos.storageServer.properties.api.Property[] props = file.getProperties(
-          false, getUserContext(userId, defaultVirtualServer.getName()));
-      for (com.xythos.storageServer.properties.api.Property prop : props) {
-        rv.put(prop.getName(), prop.getValue());
-      }
-      return rv;
-    } catch (Exception e) {
-      return rv;
     }
   }
 
@@ -819,8 +441,9 @@ public class XythosRemoteImpl implements XythosRemote {
         session.logout();
       }
     }
-
   }
+//
+//  }
 
   public void toggleMember(String groupId, String userId) {
     Context context = null;
