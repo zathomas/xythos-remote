@@ -42,16 +42,18 @@ import org.slf4j.LoggerFactory;
 import edu.nyu.XythosRemote;
 
 public class XythosRemoteImpl implements XythosRemote {
-  
+
   Logger log = LoggerFactory.getLogger(XythosRemoteImpl.class);
 
   private static String ADMIN = "administrator";
-  private static final List<String> DIMENSIONABLE_MIME_TYPES = Arrays.asList(new String[] {"image/jpeg","image/jpg","image/png","image/gif","image/tiff","image/bmp"});
+  private static final List<String> DIMENSIONABLE_MIME_TYPES = Arrays
+      .asList(new String[] { "image/jpeg", "image/jpg", "image/png", "image/gif",
+          "image/tiff", "image/bmp" });
 
   private static final int MAX_THUMB_HEIGHT = 150;
 
   private static final int MAX_THUMB_WIDTH = 150;
-  
+
   private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   private void addBookmark(String userId, String path, String displayName)
@@ -71,7 +73,7 @@ public class XythosRemoteImpl implements XythosRemote {
       }
     }
   }
-  
+
   private void createUserHomeDirectory(String userId) {
     try {
       Context context = null;
@@ -82,14 +84,13 @@ public class XythosRemoteImpl implements XythosRemote {
         String ownerPrincipalID = context.getContextUser().getPrincipalID();
         String documentStoreName = Parameters.getNewUserDocumentStore();
 
-        CreateTopLevelDirectoryData directoryData = new CreateTopLevelDirectoryData(defaultVirtualServer,
-            homeDirectoryPath,
-            documentStoreName,
-            ownerPrincipalID);
+        CreateTopLevelDirectoryData directoryData = new CreateTopLevelDirectoryData(
+            defaultVirtualServer, homeDirectoryPath, documentStoreName, ownerPrincipalID);
 
         FileSystem.createTopLevelDirectory(directoryData, context);
 
-        context.getContextUser().setHomeDirectory(homeDirectoryPath, defaultVirtualServer);
+        context.getContextUser()
+            .setHomeDirectory(homeDirectoryPath, defaultVirtualServer);
 
         context.commitContext();
         context = null;
@@ -164,14 +165,15 @@ public class XythosRemoteImpl implements XythosRemote {
 
   public Map<String, Object> getDocument(String path, String userId) {
     try {
-      if (log.isDebugEnabled()) log.debug("getDocument called with path: " + path);
+      if (log.isDebugEnabled())
+        log.debug("getDocument called with path: " + path);
       if (path.startsWith("/thumbs/")) {
         return getThumbnailDocument(path, userId);
       }
       VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      
-      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false,
-          getUserContext(userId, defaultVirtualServer.getName()));
+
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(
+          path, "utf-8"), false, getUserContext(userId, defaultVirtualServer.getName()));
       final String contentType = file.getFileContentType();
       final long contentLength = file.getEntrySize();
       ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -198,43 +200,64 @@ public class XythosRemoteImpl implements XythosRemote {
 
   }
 
-  private Map<String, Object> getThumbnailDocument(String path, String userId) throws Exception {
+  private Map<String, Object> getThumbnailDocument(String path, String userId)
+      throws Exception {
     try {
-      if (log.isDebugEnabled()) log.debug("getThumbnailDocument called with path " + path);
+      if (log.isDebugEnabled())
+        log.debug("getThumbnailDocument called with path " + path);
       Context adminContext = null;
       try {
         VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
         adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
-        FileSystemFile file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(path, "utf-8"), false, adminContext);
+        FileSystemFile file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder
+            .decode(path, "utf-8"), false, adminContext);
         if (file == null) {
-          if (log.isDebugEnabled()) log.debug("thumbnail not found for path " + path + " so creating new thumbnail.");
+          if (log.isDebugEnabled())
+            log.debug("thumbnail not found for path " + path
+                + " so creating new thumbnail.");
           // first request for this thumbnail
           // get the original file
           String originalPath = path.replaceFirst("/thumbs", "");
-          if (log.isDebugEnabled()) log.debug("retrieving original file for thumbnail: " + originalPath);
-          File originalFile = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(originalPath, "utf-8"), false, adminContext);
+          if (log.isDebugEnabled())
+            log.debug("retrieving original file for thumbnail: " + originalPath);
+          File originalFile = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder
+              .decode(originalPath, "utf-8"), false, adminContext);
           if (originalFile != null) {
-            if (log.isDebugEnabled()) log.debug("retrieved " + originalFile.getEntrySize() + " bytes of original file for thumbnail.");
+            if (log.isDebugEnabled())
+              log.debug("retrieved " + originalFile.getEntrySize()
+                  + " bytes of original file for thumbnail.");
           }
-          String parent = URLDecoder.decode(path.substring(0,path.lastIndexOf("/")), "utf-8");
-          String name = URLDecoder.decode(path.substring(path.lastIndexOf("/")+1), "utf-8");
+          String parent = URLDecoder.decode(path.substring(0, path.lastIndexOf("/")),
+              "utf-8");
+          String name = URLDecoder.decode(path.substring(path.lastIndexOf("/") + 1),
+              "utf-8");
           ByteArrayOutputStream original = new ByteArrayOutputStream();
           originalFile.getFileContent(original);
           ByteArrayOutputStream thumbnail = new ByteArrayOutputStream();
-          if (log.isDebugEnabled()) log.debug("attempting to use ThumbnailGenerator");
-          ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()), MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT, thumbnail);
-          if (log.isDebugEnabled()) log.debug("ThumbnailGenerator produced image of size " + thumbnail.size());
+          if (log.isDebugEnabled())
+            log.debug("attempting to use ThumbnailGenerator");
+          ThumbnailGenerator.transform(new ByteArrayInputStream(original.toByteArray()),
+              MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT, thumbnail);
+          if (log.isDebugEnabled())
+            log.debug("ThumbnailGenerator produced image of size " + thumbnail.size());
           createDirectoriesAlongPath(parent);
-          if (log.isDebugEnabled()) log.debug("attempting to create new file called " + name + " located at " + parent);
-          CreateFileData createFileData = new CreateFileData(defaultVirtualServer, parent, name, "image/jpeg", adminContext.getContextUser().getPrincipalID(),new ByteArrayInputStream(thumbnail.toByteArray()));
+          if (log.isDebugEnabled())
+            log.debug("attempting to create new file called " + name + " located at "
+                + parent);
+          CreateFileData createFileData = new CreateFileData(defaultVirtualServer,
+              parent, name, "image/jpeg", adminContext.getContextUser().getPrincipalID(),
+              new ByteArrayInputStream(thumbnail.toByteArray()));
           try {
             file = FileSystem.createFile(createFileData, adminContext);
           } catch (Exception e) {
-            if (log.isDebugEnabled()) log.debug("failed to create a new file. Exception is " + e.getClass().getCanonicalName());
+            if (log.isDebugEnabled())
+              log.debug("failed to create a new file. Exception is "
+                  + e.getClass().getCanonicalName());
             return null;
           }
           adminContext.commitContext();
-          if (log.isDebugEnabled()) log.debug("context committed for thumbnail create operation");
+          if (log.isDebugEnabled())
+            log.debug("context committed for thumbnail create operation");
         }
         adminContext = null;
         Map<String, Object> entry = new HashMap<String, Object>();
@@ -242,15 +265,16 @@ public class XythosRemoteImpl implements XythosRemote {
         entry.put("contentType", "image/jpeg");
         entry.put("contentLength", file.getEntrySize());
         Map<String, Object> props = new HashMap<String, Object>();
-        props
-            .put("filename", file.getName().substring(file.getName().lastIndexOf("/") + 1));
+        props.put("filename", file.getName().substring(
+            file.getName().lastIndexOf("/") + 1));
         props.put("lastmodified", dateFormat.format(file.getLastUpdateTimestamp()));
         entry.put("properties", props);
         entry.put("uri", file.getName());
         return entry;
       } finally {
         if (adminContext != null) {
-          if (log.isDebugEnabled()) log.debug("failed to create a thumbnail image. rolling back context.");
+          if (log.isDebugEnabled())
+            log.debug("failed to create a thumbnail image. rolling back context.");
           adminContext.rollbackContext();
           adminContext = null;
         }
@@ -260,14 +284,14 @@ public class XythosRemoteImpl implements XythosRemote {
     }
   }
 
-  private void readFileDimensionsIntoProperties(byte[] fileData,
-      Map<String, Object> props) throws IOException, InterruptedException,
-      IM4JavaException {
+  private void readFileDimensionsIntoProperties(byte[] fileData, Map<String, Object> props)
+      throws IOException, InterruptedException, IM4JavaException {
     ByteArrayInputStream input = new ByteArrayInputStream(fileData);
     Image image = javax.imageio.ImageIO.read(input);
     int imageHeight = image.getHeight(null);
     int imageWidth = image.getWidth(null);
-    int[] thumbDims = ThumbnailGenerator.getThumbnailDimensions(imageWidth, imageHeight, MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT);
+    int[] thumbDims = ThumbnailGenerator.getThumbnailDimensions(imageWidth, imageHeight,
+        MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT);
     props.put("thumbWidth", thumbDims[0]);
     props.put("thumbHeight", thumbDims[1]);
     props.put("width", image.getWidth(null));
@@ -288,36 +312,44 @@ public class XythosRemoteImpl implements XythosRemote {
       return 0;
     }
   }
-  
+
   private void createDirectoriesAlongPath(String path) {
-    if (log.isDebugEnabled()) log.debug("createDirectoriesAlongPath called for path: " + path);
+    if (log.isDebugEnabled())
+      log.debug("createDirectoriesAlongPath called for path: " + path);
     try {
       Context adminContext = null;
       try {
-      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
-      adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
-      // if the whole path exists already, we don't need to do anything
-      if (FileSystem.getEntry(defaultVirtualServer, path, false, adminContext) != null) return;
-      
-      String[] pathSegments = path.split("/");
-      StringBuffer existingPath = new StringBuffer();
-      existingPath.append("/");
-      FileSystemEntry directory = null;
-      for (String pathSegment : pathSegments) {
-        if ("".equals(pathSegment)) continue;
-        existingPath.append(pathSegment);
-        directory = FileSystem.getEntry(defaultVirtualServer, existingPath.toString(), false, adminContext);
-        if (directory == null) {
-          if (log.isDebugEnabled()) log.debug("path doesn't exist, creating it: " + existingPath.toString());
-          String parent = existingPath.toString().substring(0, existingPath.toString().lastIndexOf("/"));
-          CreateDirectoryData directoryData = new CreateDirectoryData(defaultVirtualServer, parent, pathSegment, adminContext.getContextUser().getPrincipalID());
-          FileSystem.createDirectory(directoryData, adminContext);
-        }
+        VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+        adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
+        // if the whole path exists already, we don't need to do anything
+        if (FileSystem.getEntry(defaultVirtualServer, path, false, adminContext) != null)
+          return;
+
+        String[] pathSegments = path.split("/");
+        StringBuffer existingPath = new StringBuffer();
         existingPath.append("/");
-      }
-      adminContext.commitContext();
-      adminContext = null;
-      }finally {
+        FileSystemEntry directory = null;
+        for (String pathSegment : pathSegments) {
+          if ("".equals(pathSegment))
+            continue;
+          existingPath.append(pathSegment);
+          directory = FileSystem.getEntry(defaultVirtualServer, existingPath.toString(),
+              false, adminContext);
+          if (directory == null) {
+            if (log.isDebugEnabled())
+              log.debug("path doesn't exist, creating it: " + existingPath.toString());
+            String parent = existingPath.toString().substring(0,
+                existingPath.toString().lastIndexOf("/"));
+            CreateDirectoryData directoryData = new CreateDirectoryData(
+                defaultVirtualServer, parent, pathSegment, adminContext.getContextUser()
+                    .getPrincipalID());
+            FileSystem.createDirectory(directoryData, adminContext);
+          }
+          existingPath.append("/");
+        }
+        adminContext.commitContext();
+        adminContext = null;
+      } finally {
         if (adminContext != null) {
           adminContext.rollbackContext();
           adminContext = null;
@@ -357,11 +389,14 @@ public class XythosRemoteImpl implements XythosRemote {
       VirtualServer server = VirtualServer.getDefaultVirtualServer();
       Context ctx = getUserContext(userId, server.getName());
       // if home directory doesn't exist, create it
-      FileSystemEntry homeDirectory = FileSystem.getEntry(server, "/"+userId, false, ctx);
+      FileSystemEntry homeDirectory = FileSystem.getEntry(server, "/" + userId, false,
+          ctx);
       if ((homeDirectory == null) || !(homeDirectory instanceof FileSystemDirectory)) {
-        log.info("During search of /" + userId + ", directory didn't exist, so creating it.");
+        log.info("During search of /" + userId
+            + ", directory didn't exist, so creating it.");
         createUserHomeDirectory(userId);
-        // search results will necessarily be empty because we have newly created the home dir
+        // search results will necessarily be empty because we have newly created the home
+        // dir
         return rv;
       }
       DaslStatement statement = new DaslStatement(dasl, ctx, true);
@@ -380,7 +415,7 @@ public class XythosRemoteImpl implements XythosRemote {
           Map<String, Object> props = new HashMap<String, Object>();
           if (fileHasDimensions(e.getFileContentType())) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            ((File)e).getFileContent(out);
+            ((File) e).getFileContent(out);
             props.put("thumbnailUri", "/thumbs" + e.getName());
             readFileDimensionsIntoProperties(out.toByteArray(), props);
           }
@@ -442,8 +477,91 @@ public class XythosRemoteImpl implements XythosRemote {
       }
     }
   }
-//
-//  }
+
+  public byte[] getFileContent(String path, String userId) {
+    try {
+      if (path.startsWith("/thumbs/")) {
+        if (log.isDebugEnabled())
+          log.debug("the contents of a thumbnail have been requested: " + path);
+        return getImageThumb(path, userId);
+      }
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(
+          path, "utf-8"), false, getUserContext(userId, defaultVirtualServer.getName()));
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      file.getFileContent(output);
+      return output.toByteArray();
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  private byte[] getImageThumb(String path, String userId) {
+    try {
+      String thumbnailPath = path;
+      if (!path.startsWith("/thumbs/")) {
+        thumbnailPath = "/thumbs" + path;
+      } else {
+        path = path.replaceFirst("/thumbs", "");
+      }
+      VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
+      // first get the original
+      if (log.isDebugEnabled())
+        log.debug("retrieving the original for this thumbnail: " + path);
+      File file = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(
+          path, "utf-8"), false, getUserContext(userId, defaultVirtualServer.getName()));
+      if (file == null) {
+        if (log.isDebugEnabled())
+          log.debug("original file not found: " + path);
+        return null;
+      } else {
+        ByteArrayOutputStream rv = new ByteArrayOutputStream();
+        // look for a thumbnail
+        File thumbFile = (File) FileSystem.getEntry(defaultVirtualServer, URLDecoder
+            .decode(thumbnailPath, "utf-8"), false, AdminUtil
+            .getContextForAdmin("127.0.0.1"));
+        if (thumbFile == null) {
+          Context adminContext = null;
+          try {
+            // thumbnail does not exist, generate one
+            adminContext = AdminUtil.getContextForAdmin("127.0.0.1");
+            String parent = thumbnailPath.substring(0, thumbnailPath.lastIndexOf("/"));
+            String name = thumbnailPath.substring(thumbnailPath.lastIndexOf("/") + 1);
+            ByteArrayOutputStream original = new ByteArrayOutputStream();
+            file.getFileContent(original);
+            ThumbnailGenerator.transform(
+                new ByteArrayInputStream(original.toByteArray()), MAX_THUMB_WIDTH,
+                MAX_THUMB_HEIGHT, rv);
+            createDirectoriesAlongPath(parent);
+            CreateFileData createFileData = new CreateFileData(defaultVirtualServer,
+                parent, name, "image/jpeg", adminContext.getContextUser()
+                    .getPrincipalID(), new ByteArrayInputStream(rv.toByteArray()));
+            FileSystem.createFile(createFileData, adminContext);
+            adminContext.commitContext();
+            if (log.isDebugEnabled())
+              log.debug("getImageThumb successfully created new thumbnail " + parent
+                  + "/" + name);
+            adminContext = null;
+          } finally {
+            if (adminContext != null) {
+              adminContext.rollbackContext();
+              adminContext = null;
+            }
+          }
+        } else {
+          if (log.isDebugEnabled())
+            log.debug("thumbnail image successfully retrieved from " + thumbnailPath);
+          // thumbnail already exists, use it
+          thumbFile.getFileContent(rv);
+        }
+        return rv.toByteArray();
+      }
+    } catch (Exception e) {
+      if (log.isDebugEnabled())
+        log.debug("getImageThumb exception " + e.getClass().getCanonicalName());
+      throw new RuntimeException(e);
+    }
+  }
 
   public void toggleMember(String groupId, String userId) {
     Context context = null;
@@ -461,7 +579,7 @@ public class XythosRemoteImpl implements XythosRemote {
       }
       GlobalGroup group = null;
       for (int i = 0; i < groupsArray.length; i++) {
-        if (((GlobalGroup)groupsArray[i]).getName().equals(groupId)) {
+        if (((GlobalGroup) groupsArray[i]).getName().equals(groupId)) {
           group = (GlobalGroup) groupsArray[i];
           break;
         }
@@ -540,7 +658,8 @@ public class XythosRemoteImpl implements XythosRemote {
         VirtualServer defaultVirtualServer = VirtualServer.getDefaultVirtualServer();
         String location = defaultVirtualServer.getName();
         context = getUserContext(userId, location);
-        FileSystemEntry entry = FileSystem.getEntry(defaultVirtualServer, URLDecoder.decode(filePath, "utf-8"), true, context);
+        FileSystemEntry entry = FileSystem.getEntry(defaultVirtualServer, URLDecoder
+            .decode(filePath, "utf-8"), true, context);
         if (entry == null) {
           return false;
         }
@@ -554,15 +673,15 @@ public class XythosRemoteImpl implements XythosRemote {
         if (groupsArray.length < 1) {
           return false;
         }
-        
+
         GlobalGroup group = null;
         for (int i = 0; i < groupsArray.length; i++) {
-          if (((GlobalGroup)groupsArray[i]).getName().equals(groupId)) {
+          if (((GlobalGroup) groupsArray[i]).getName().equals(groupId)) {
             group = (GlobalGroup) groupsArray[i];
             break;
           }
         }
-        
+
         if (group == null) {
           return false;
         }
