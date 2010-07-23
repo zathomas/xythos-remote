@@ -6,7 +6,7 @@
            
            <bean id="xythosService" class="org.sakaiproject.xythos.XythosRemoteImpl" />
            
-           <bean name="/XythosService" class="org.springframework.remoting.caucho.HessianServiceExporter">
+           <bean name="/RemoteFilesService" class="org.springframework.remoting.caucho.HessianServiceExporter">
              <property name="service" ref="xythosService"/>
              <property name="serviceInterface" value="edu.nyu.XythosRemote"/>
            </bean>
