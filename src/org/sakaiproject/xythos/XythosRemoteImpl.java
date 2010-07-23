@@ -585,10 +585,15 @@ public class XythosRemoteImpl implements XythosRemote {
         }
       }
       if (group == null) {
+        log.warn("toggleMember, group is null for id: " + groupId);
         return;
       }
       UserBase user = PrincipalManager.findUser(userId, VirtualServer
           .getDefaultVirtualServer().getName());
+      if (user == null) {
+        log.warn("toggleMember, user is null for id: " + userId);
+        return;
+      }
       if ((group.getMembers() != null)
           && Arrays.asList(group.getMembers()).contains(user)) {
         group.removeMember(userId);
